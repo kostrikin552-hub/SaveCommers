@@ -1,0 +1,9 @@
+css
+body { font-family: system-ui; background: #f5f7fb; padding: 16px; }
+#app { max-width: 600px; margin: auto; background: white; padding: 24px; border-radius: 16px; }
+textarea { width: 100%; padding: 12px; box-sizing: border-box; }
+button { background: #1e293b; color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; margin-top: 12px; }
+.big-score { font-size: 48px; text-align: center; }
+.error-card { background: #fee2e2; padding: 12px; border-radius: 8px; }
+.draft-buttons { display: flex; gap: 8px; }
+.draft-buttons button { background: #e2e8f0; color: #1e293b; }
