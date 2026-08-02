@@ -1,25 +1,21 @@
-python
 import asyncio
 import logging
-from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram import Bot, Dispatcher, types
+from aiogram.contrib.middlewares.logging import LoggingMiddleware
+from aiogram.utils.executor import start_polling
 from app.config import config
-from app.handlers import router
+from app.handlers import register_handlers
 from app.database import engine, Base
 
 logging.basicConfig(level=logging.INFO)
 
-async def on_startup():
+async def on_startup(dp):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-async def main():
-    bot = Bot(token=config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = Dispatcher()
-    dp.include_router(router)
-    await on_startup()
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == '__main__':
+    bot = Bot(token=config.BOT_TOKEN, parse_mode=types.ParseMode.HTML)
+    dp = Dispatcher(bot)
+    dp.middleware.setup(LoggingMiddleware())
+    register_handlers(dp)
+    start_polling(dp, on_startup=on_startup, skip_updates=True)
