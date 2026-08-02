@@ -1,0 +1,23 @@
+html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>СейфКоммерс</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <h1>📊 СейфКоммерс</h1>
+        <div id="step-upload">
+            <p>Вставьте текст переписки:</p>
+            <textarea id="dialog-input" rows="10" placeholder="Клиент: Здравствуйте...&#10;Вы: Добрый день!..."></textarea>
+            <button id="analyze-btn">🔍 Анализировать</button>
+            <p style="font-size:0.8em; color:#888;">Данные обрабатываются локально.</p>
+        </div>
+        <div id="step-result" style="display:none;"></div>
+    </div>
+    <script src="app.js"></script>
+</body>
+  </html>
