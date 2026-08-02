@@ -27,7 +27,6 @@ def start_http_server():
     server = HTTPServer(('', port), HealthHandler)
     server.serve_forever()
 
-# Запускаем HTTP-сервер в фоновом потоке
 threading.Thread(target=start_http_server, daemon=True).start()
 # --------------------------------
 
@@ -37,6 +36,10 @@ def send_message(chat_id, text, reply_markup=None):
     if reply_markup:
         payload["reply_markup"] = json.dumps(reply_markup)
     requests.post(url, json=payload)
+
+def answer_callback(callback_id, text=""):
+    url = f"{BASE_URL}/answerCallbackQuery"
+    requests.post(url, json={"callback_query_id": callback_id, "text": text})
 
 def get_updates():
     global offset
@@ -57,6 +60,7 @@ def process_update(update):
         msg = update["message"]
         chat_id = msg["chat"]["id"]
         text = msg.get("text", "")
+        
         if text.startswith("/start"):
             keyboard = {
                 "keyboard": [
@@ -67,12 +71,52 @@ def process_update(update):
                 "resize_keyboard": True
             }
             send_message(chat_id, f"Привет, {msg['from']['first_name']}!\nЯ покажу, где вы теряете клиентов.", keyboard)
+        
         elif text == "📊 Мой прогресс":
-            send_message(chat_id, "Пока нет данных. Сделайте первый анализ.")
+            send_message(
+                chat_id,
+                "📈 Ваш прогресс:\n\n"
+                "Пока нет данных. Сделайте первый анализ, и я буду отслеживать ваши успехи.\n"
+                "После 3 анализов здесь появится статистика.\n\n"
+                "💡 Совет: анализируйте каждый важный диалог, чтобы видеть рост."
+            )
+        
         elif text == "💎 Pro":
-            send_message(chat_id, "🔓 Pro-подписка:\n✅ Безлимитный анализ\n✅ История\n✅ PDF\nСтоимость: 990 ₽/мес\n(демо-режим)")
+            keyboard_inline = {
+                "inline_keyboard": [
+                    [{"text": "🎁 Активировать 7 дней бесплатно", "callback_data": "trial"}]
+                ]
+            }
+            send_message(
+                chat_id,
+                "🔓 Pro-подписка:\n"
+                "✅ Безлимитный анализ\n"
+                "✅ История всех ошибок\n"
+                "✅ PDF-отчёты\n"
+                "✅ Персональные рекомендации\n\n"
+                "Стоимость: 990 ₽/мес\n\n"
+                "Нажмите кнопку ниже, чтобы активировать пробный период на 7 дней.",
+                keyboard_inline
+            )
         else:
             send_message(chat_id, "Используйте кнопки меню.")
+    
+    elif "callback_query" in update:
+        callback = update["callback_query"]
+        chat_id = callback["message"]["chat"]["id"]
+        data = callback["data"]
+        callback_id = callback["id"]
+        
+        if data == "trial":
+            answer_callback(callback_id, "Пробный период активирован!")
+            send_message(
+                chat_id,
+                "✅ Пробный период на 7 дней активирован!\n"
+                "Теперь у вас безлимитный анализ и все функции Pro.\n\n"
+                "Начинайте анализировать ваши переписки прямо сейчас!"
+            )
+        else:
+            answer_callback(callback_id, "Неизвестная команда")
 
 if __name__ == "__main__":
     print("Бот запущен...")
