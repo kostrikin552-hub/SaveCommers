@@ -1,6 +1,8 @@
 import os
 import time
 import json
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import requests
 from dotenv import load_dotenv
 
@@ -12,6 +14,22 @@ if not TOKEN:
 
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 offset = 0
+
+# ---- HTTP-сервер для Render ----
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+def start_http_server():
+    port = int(os.getenv("PORT", 10000))
+    server = HTTPServer(('', port), HealthHandler)
+    server.serve_forever()
+
+# Запускаем HTTP-сервер в фоновом потоке
+threading.Thread(target=start_http_server, daemon=True).start()
+# --------------------------------
 
 def send_message(chat_id, text, reply_markup=None):
     url = f"{BASE_URL}/sendMessage"
