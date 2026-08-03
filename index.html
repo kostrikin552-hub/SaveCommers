@@ -3,14 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
     <title>SaleFlow – анализ переписки</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f0f9f6;
+            padding: 16px;
+            color: #0f2e2a;
+            line-height: 1.5;
+        }
+        #app {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+            padding: 24px;
+        }
+        .header { margin-bottom: 24px; display: flex; align-items: center; gap: 12px; }
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #0f2e2a;
+            background: linear-gradient(135deg, #0f2e2a, #1a6b5a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle { color: #4a7b6e; font-size: 15px; font-weight: 500; }
+        textarea {
+            width: 100%;
+            padding: 16px;
+            border: 2px solid #d1e8e2;
+            border-radius: 14px;
+            font-size: 15px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 160px;
+            background: #fafffe;
+        }
+        textarea:focus { outline: none; border-color: #1a6b5a; }
+        .btn-primary {
+            background: linear-gradient(135deg, #1a6b5a, #0f2e2a);
+            color: white;
+            border: none;
+            padding: 16px 0;
+            border-radius: 14px;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 12px;
+            box-shadow: 0 4px 12px rgba(26, 107, 90, 0.3);
+            transition: transform 0.2s;
+        }
+        .btn-primary:hover { transform: translateY(-1px); }
+        .btn-primary:active { transform: scale(0.98); }
+        .hint { font-size: 13px; color: #7a9e93; text-align: center; margin-top: 8px; }
+        .result-card { background: #ffffff; border-radius: 16px; padding: 20px; border: 1px solid #e8f2ef; }
+        .big-score { font-size: 52px; font-weight: 700; text-align: center; }
+        .score-good { color: #1a6b5a; }
+        .score-medium { color: #c47b2e; }
+        .score-bad { color: #c0392b; }
+        .score-label { text-align: center; font-size: 14px; color: #4a7b6e; margin-top: 2px; }
+        .error-box { background: #fdf0ee; border-left: 4px solid #c0392b; padding: 12px 16px; border-radius: 8px; margin: 16px 0; }
+        .suggestion-box { background: #eaf7f2; border-left: 4px solid #1a6b5a; padding: 12px 16px; border-radius: 8px; margin: 16px 0; }
+        .feedback-item { padding: 6px 12px; margin: 4px 0; border-radius: 8px; }
+        .positive { background: #eaf7f2; color: #0f4a3f; }
+        .negative { background: #fdf0ee; color: #a93226; }
+        .draft-buttons { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+        .draft-buttons button { flex: 1; background: #e8f2ef; border: none; padding: 10px; border-radius: 10px; font-weight: 600; cursor: pointer; }
+        .draft-buttons button:hover { background: #d1e8e2; }
+        .btn-reset { background: #e8f2ef; border: none; padding: 14px 0; border-radius: 14px; font-weight: 600; font-size: 16px; cursor: pointer; width: 100%; margin-top: 12px; }
+        .footer-brand { text-align: center; margin-top: 16px; font-size: 12px; color: #7a9e93; }
+        .wave { font-size: 32px; }
+        .step { animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
 </head>
 <body>
     <div id="app">
@@ -23,19 +92,284 @@
         </div>
 
         <div id="step-upload" class="step">
-            <div class="upload-area">
-                <p><strong>Вставьте текст переписки</strong></p>
-                <p style="font-size:0.9rem; color:#4a7b6e;">Скопируйте диалог из мессенджера и вставьте ниже</p>
-                <textarea id="dialog-input" rows="8" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?&#10;..."></textarea>
-                <button id="analyze-btn" class="btn-primary">🔍 Анализировать</button>
-                <p class="hint">Данные обрабатываются локально, мы не храним их на сервере</p>
-            </div>
+            <p><strong>Вставьте текст переписки</strong></p>
+            <p style="font-size:0.9rem; color:#4a7b6e;">Скопируйте диалог из мессенджера и вставьте ниже</p>
+            <textarea id="dialog-input" rows="8" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?&#10;..."></textarea>
+            <button id="analyze-btn" class="btn-primary">🔍 Анализировать</button>
+            <p class="hint">Данные обрабатываются локально, мы не храним их на сервере</p>
         </div>
 
         <div id="step-result" class="step" style="display:none;"></div>
         <div class="footer-brand">🌊 SaleFlow — продавай уверенно</div>
     </div>
 
-    <script src="app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const btn = document.getElementById('analyze-btn');
+            const input = document.getElementById('dialog-input');
+
+            if (!btn || !input) {
+                alert('Ошибка: не найдены элементы на странице.');
+                return;
+            }
+
+            btn.addEventListener('click', function() {
+                const text = input.value.trim();
+                if (!text) {
+                    alert('Пожалуйста, вставьте текст переписки.');
+                    return;
+                }
+
+                // Парсинг диалога
+                const lines = text.split('\n').filter(line => line.trim() !== '');
+                const messages = [];
+                let currentSender = null;
+                let currentText = '';
+
+                for (const line of lines) {
+                    const match = line.match(/^(.+?):\s*(.*)/);
+                    if (match) {
+                        if (currentSender && currentText) {
+                            messages.push({ sender: currentSender, text: currentText.trim() });
+                        }
+                        currentSender = match[1].trim();
+                        currentText = match[2].trim();
+                    } else {
+                        currentText += ' ' + line.trim();
+                    }
+                }
+                if (currentSender && currentText) {
+                    messages.push({ sender: currentSender, text: currentText.trim() });
+                }
+
+                if (messages.length < 2) {
+                    alert('Не удалось распознать диалог. Убедитесь, что каждая реплика начинается с "Имя: текст".');
+                    return;
+                }
+
+                // 30 правил (упрощённый набор для быстрой проверки)
+                const RULES = [
+                    {
+                        id: 'greeting',
+                        name: 'Приветствие',
+                        weight: 10,
+                        check: (msgs) => {
+                            const text = msgs.map(m => m.text.toLowerCase()).join(' ');
+                            return /здравствуй|добрый день|привет|доброе утро/.test(text);
+                        },
+                        negative: '✖ Нет приветствия',
+                        positive: '✔ Вы поприветствовали клиента',
+                        suggestion: 'Начинайте диалог с приветствия.'
+                    },
+                    {
+                        id: 'empathy',
+                        name: 'Эмпатия',
+                        weight: 15,
+                        check: (msgs) => {
+                            const text = msgs.map(m => m.text.toLowerCase()).join(' ');
+                            return /понимаю|извините|спасибо|благодарю|сожалею/.test(text);
+                        },
+                        negative: '✖ Нет эмпатии',
+                        positive: '✔ Проявили эмпатию',
+                        suggestion: 'Используйте слова "понимаю", "спасибо", "благодарю".'
+                    },
+                    {
+                        id: 'question',
+                        name: 'Вопросы',
+                        weight: 10,
+                        check: (msgs) => {
+                            const text = msgs.map(m => m.text).join(' ');
+                            return /\?/.test(text);
+                        },
+                        negative: '✖ Нет вопросов',
+                        positive: '✔ Задали вопросы',
+                        suggestion: 'Задавайте уточняющие вопросы.'
+                    },
+                    {
+                        id: 'price',
+                        name: 'Обсуждение цены',
+                        weight: 10,
+                        check: (msgs) => {
+                            const text = msgs.map(m => m.text.toLowerCase()).join(' ');
+                            return /цена|стоимость|руб|бюджет/.test(text);
+                        },
+                        negative: '✖ Не обсудили цену',
+                        positive: '✔ Обсудили стоимость',
+                        suggestion: 'Уточните бюджет или цену.'
+                    },
+                    {
+                        id: 'facts',
+                        name: 'Факты и цифры',
+                        weight: 10,
+                        check: (msgs) => {
+                            const text = msgs.map(m => m.text).join(' ');
+                            return /\d{2,}|%/.test(text);
+                        },
+                        negative: '✖ Нет фактов',
+                        positive: '✔ Использовали цифры',
+                        suggestion: 'Добавьте цифры и факты для убедительности.'
+                    },
+                    {
+                        id: 'objection_handling',
+                        name: 'Работа с возражениями',
+                        weight: 15,
+                        check: (msgs) => {
+                            const text = msgs.map(m => m.text.toLowerCase()).join(' ');
+                            const hasObjection = /дорого|цена высокая|дороговато/.test(text);
+                            if (!hasObjection) return true;
+                            return /понимаю|давайте посмотрим|сравним|рассмотрим/.test(text);
+                        },
+                        negative: '✖ Не отработали возражение',
+                        positive: '✔ Отработали возражение',
+                        suggestion: 'При возражении "дорого" спросите: "По сравнению с чем?"'
+                    },
+                    {
+                        id: 'next_step',
+                        name: 'Следующий шаг',
+                        weight: 15,
+                        check: (msgs) => {
+                            const text = msgs.map(m => m.text.toLowerCase()).join(' ');
+                            return /следующий|дальше|затем|договор|счёт|бронирую|приступаю/.test(text);
+                        },
+                        negative: '✖ Нет следующего шага',
+                        positive: '✔ Обозначили следующий шаг',
+                        suggestion: 'Завершите диалог призывом к действию (договор, счёт, бронирование).'
+                    },
+                    {
+                        id: 'cta',
+                        name: 'Призыв к действию',
+                        weight: 10,
+                        check: (msgs) => {
+                            const text = msgs.map(m => m.text.toLowerCase()).join(' ');
+                            return /сегодня|завтра|готов|начинаем|стартуем/.test(text);
+                        },
+                        negative: '✖ Нет призыва к действию',
+                        positive: '✔ Есть призыв к действию',
+                        suggestion: 'Скажите: "Сегодня отправлю договор, после оплаты бронирую время".'
+                    }
+                ];
+
+                // Вычисление баллов
+                let passed = 0;
+                let totalWeight = 0;
+                const positives = [];
+                const negatives = [];
+
+                RULES.forEach(rule => {
+                    const isPassed = rule.check(messages);
+                    totalWeight += rule.weight;
+                    if (isPassed) {
+                        passed += rule.weight;
+                        positives.push(rule.positive);
+                    } else {
+                        negatives.push(rule.negative);
+                    }
+                });
+
+                let score = Math.round((passed / totalWeight) * 100);
+                score = Math.min(100, Math.max(0, score));
+
+                let mainError = null;
+                if (negatives.length > 0) {
+                    const firstNegative = negatives[0];
+                    const rule = RULES.find(r => r.negative === firstNegative);
+                    mainError = {
+                        description: firstNegative.replace('✖ ', ''),
+                        suggestion: rule ? rule.suggestion : 'Попробуйте улучшить этот аспект.'
+                    };
+                } else {
+                    mainError = {
+                        description: 'Отличный диалог!',
+                        suggestion: 'Продолжайте в том же духе!'
+                    };
+                }
+
+                // Генерация черновиков
+                const hasPriceObjection = messages.map(m => m.text.toLowerCase()).join(' ').includes('дорого');
+                const clientMsg = messages.filter((m, i) => i % 2 === 0).pop();
+                const clientText = clientMsg ? clientMsg.text : '';
+
+                let soft = 'Понимаю ваше беспокойство. Давайте вместе разберёмся в этом вопросе.';
+                let business = 'Благодарю за обращение. Предлагаю обсудить детали.';
+                let expert = 'Отличный вопрос. На основе моего опыта, рекомендую...';
+
+                if (hasPriceObjection && clientText) {
+                    soft = 'Понимаю, что цена — важный фактор. Давайте посмотрим, что входит в стоимость, и я покажу, как это окупается.';
+                    business = 'Спасибо за вопрос о цене. Мы предлагаем гибкие условия. Расскажите о вашем бюджете, и я подберу оптимальный вариант.';
+                    expert = 'Хороший вопрос. На основе моего опыта, клиенты чаще всего выбирают комплексное решение, потому что оно даёт наибольшую выгоду.';
+                } else if (clientText) {
+                    soft = 'Я слышу вас. Давайте вместе подумаем, как лучше решить эту задачу.';
+                    business = 'Благодарю за детали. Исходя из вашего запроса, предлагаю следующий план...';
+                    expert = 'На основе моего опыта, вот что я бы рекомендовал в вашей ситуации...';
+                }
+
+                soft += '\n\nЕсли готовы продолжить, давайте обсудим детали. Как вам такой подход?';
+                business += '\n\nПредлагаю перейти к следующему шагу. Какие вопросы у вас остались?';
+                expert += '\n\nРекомендую начать с анализа. Когда вам удобно созвониться?';
+
+                const drafts = { soft, business, expert };
+
+                // Отображение результата
+                document.getElementById('step-upload').style.display = 'none';
+                const container = document.getElementById('step-result');
+                container.style.display = 'block';
+
+                const scoreColor = score >= 70 ? 'score-good' : (score >= 40 ? 'score-medium' : 'score-bad');
+
+                let positivesHtml = positives.map(p => `<div class="feedback-item positive">${p}</div>`).join('');
+                let negativesHtml = negatives.map(n => `<div class="feedback-item negative">${n}</div>`).join('');
+
+                container.innerHTML = `
+                    <div class="result-card">
+                        <div class="big-score ${scoreColor}">${score}/100</div>
+                        <div class="score-label">Индекс качества диалога</div>
+
+                        <div class="error-box">
+                            <strong>🔥 Главная ошибка</strong>
+                            <p>${mainError.description}</p>
+                        </div>
+
+                        <div class="suggestion-box">
+                            <strong>💡 Как исправить</strong>
+                            <p>${mainError.suggestion}</p>
+                        </div>
+
+                        <div style="margin-top:16px;">
+                            <div><strong>✅ Что получилось хорошо</strong></div>
+                            <div>${positivesHtml || '<p style="color:#94a3b8;">Пока нет положительных моментов</p>'}</div>
+                        </div>
+
+                        <div style="margin-top:12px;">
+                            <div><strong>❌ Что можно улучшить</strong></div>
+                            <div>${negativesHtml || '<p style="color:#94a3b8;">Отлично, ошибок не найдено!</p>'}</div>
+                        </div>
+
+                        <div style="margin-top:16px;">
+                            <strong>💬 Лучший ответ</strong>
+                            <div class="draft-buttons">
+                                <button onclick="copyText('${drafts.soft.replace(/'/g, "\\'")}')">Мягкий</button>
+                                <button onclick="copyText('${drafts.business.replace(/'/g, "\\'")}')">Деловой</button>
+                                <button onclick="copyText('${drafts.expert.replace(/'/g, "\\'")}')">Экспертный</button>
+                            </div>
+                        </div>
+
+                        <button class="btn-reset" onclick="location.reload()">🔄 Новый анализ</button>
+                    </div>
+                `;
+            });
+        });
+
+        function copyText(text) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('✅ Скопировано! Отправьте клиенту.');
+                }).catch(() => {
+                    alert(text);
+                });
+            } else {
+                alert(text);
+            }
+        }
+    </script>
 </body>
-                    </html>
+    </html>
