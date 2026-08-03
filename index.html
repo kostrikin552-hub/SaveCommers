@@ -1,28 +1,41 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Тест</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>SaleFlow – анализ переписки</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Тестовая страница</h1>
-    <button id="analyze-btn">Нажми меня</button>
+    <div id="app">
+        <div class="header">
+            <span class="wave">🌊</span>
+            <div>
+                <h1>SaleFlow</h1>
+                <div class="subtitle">Личный коуч по продажам</div>
+            </div>
+        </div>
 
-    <script>
-        // Этот скрипт выполняется сразу при загрузке страницы
-        alert('Страница загружена!');
+        <div id="step-upload" class="step">
+            <div class="upload-area">
+                <p><strong>Вставьте текст переписки</strong></p>
+                <p style="font-size:0.9rem; color:#4a7b6e;">Скопируйте диалог из мессенджера и вставьте ниже</p>
+                <textarea id="dialog-input" rows="8" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?&#10;..."></textarea>
+                <button id="analyze-btn" class="btn-primary">🔍 Анализировать</button>
+                <p class="hint">Данные обрабатываются локально, мы не храним их на сервере</p>
+            </div>
+        </div>
 
-        document.addEventListener('DOMContentLoaded', function() {
-            var btn = document.getElementById('analyze-btn');
-            if (btn) {
-                btn.addEventListener('click', function() {
-                    alert('Кнопка работает!');
-                });
-            } else {
-                alert('Кнопка не найдена!');
-            }
-        });
-    </script>
+        <div id="step-result" class="step" style="display:none;"></div>
+        <div class="footer-brand">🌊 SaleFlow — продавай уверенно</div>
+    </div>
+
+    <script src="app.js"></script>
 </body>
-</html>
+                    </html>
