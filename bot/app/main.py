@@ -29,6 +29,108 @@ offset = 0
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data.db")
 
+# ----- Тексты для сообщений (безопасные строки) -----
+TEXT_START = (
+    "🌊 Привет, %s!\n\n"
+    "Я <b>SaleFlow</b> — твой личный коуч по продажам.\n"
+    "За 60 секунд покажу, где ты теряешь клиента и как это исправить.\n\n"
+    "▶️ Нажми «Новый анализ» и вставь переписку — я дам конкретные советы."
+)
+
+TEXT_TARIFFS = (
+    "💰 <b>Выбери тариф</b>\n\n"
+    "🔓 <b>Pro</b> — 990 ₽/мес\n"
+    "✅ Безлимитный анализ\n"
+    "✅ История всех ошибок\n"
+    "✅ PDF-отчёт\n"
+    "✅ 3 варианта ответа\n\n"
+    "👑 <b>Premium</b> — 1 990 ₽/мес\n"
+    "✅ Всё, что в Pro\n"
+    "✅ Приоритетная поддержка 24/7\n"
+    "✅ Расширенная аналитика (10+ параметров)\n"
+    "✅ 5 видов отчётов\n"
+    "✅ Сравнение с топ-продавцами\n\n"
+    "🏢 <b>B2B</b> — 4 990 ₽/мес (до 10 чел)\n"
+    "✅ Всё, что в Premium для всей команды\n"
+    "✅ Панель управления командой\n"
+    "✅ Тренды ошибок по сотрудникам\n"
+    "✅ Рекомендации для обучения\n"
+    "✅ Общая статистика\n\n"
+    "🎁 Нажми «Активировать 7 дней бесплатно», чтобы попробовать Pro."
+)
+
+TEXT_TARIFFS_SHORT = (
+    "💰 <b>Выбери тариф</b>\n\n"
+    "🔓 Pro — 990 ₽/мес\n"
+    "👑 Premium — 1 990 ₽/мес\n"
+    "🏢 B2B — 4 990 ₽/мес (до 10 чел)"
+)
+
+TEXT_PROGRESS_NO_SUB = "📈 <b>Твой прогресс</b>\n\nУ тебя нет активной подписки.\n"
+TEXT_PROGRESS_HISTORY_HEADER = "Последние анализы:\n"
+TEXT_PROGRESS_HISTORY_LINE = "• {date}: {score}/100, найдено {markers} маркеров\n"
+TEXT_PROGRESS_NO_HISTORY = "Пока нет истории анализов. Сделай первый анализ!"
+
+TEXT_SUPPORT = (
+    "📩 <b>Поддержка SaleFlow</b>\n\n"
+    "Если у вас возникли вопросы или проблемы:\n"
+    "• Нажмите кнопку «Написать в поддержку».\n"
+    "• Или напишите напрямую: @LyokhaPatron\n\n"
+    "Мы ответим в течение 1–2 часов."
+)
+
+TEXT_SUPPORT_PROMPT = (
+    "📩 <b>Напишите ваше сообщение</b>\n\n"
+    "Опишите проблему или вопрос — я отправлю его менеджеру поддержки.\n"
+    "Для отмены отправьте /cancel."
+)
+
+TEXT_B2B_NO_COMPANY = (
+    "👥 <b>B2B-функционал</b>\n\n"
+    "Вы можете создать компанию и приглашать сотрудников.\n"
+    "Или введите код приглашения."
+)
+
+TEXT_B2B_CREATE_PROMPT = "🏢 <b>Создание компании</b>\n\nВведите название вашей компании (например, «ООО Ромашка»)."
+TEXT_B2B_JOIN_PROMPT = "🔑 <b>Введите код приглашения</b>\n\nКод выглядит как 8 символов (например, A1B2C3D4)."
+
+TEXT_TRIAL_ACTIVATED = (
+    "✅ <b>Пробный период на 7 дней активирован!</b>\n\n"
+    "Теперь у тебя безлимитный анализ, история и PDF-отчёты.\n"
+    "Начни анализировать свои переписки прямо сейчас!"
+)
+
+TEXT_PAYMENT_CREATED = (
+    "💳 <b>Оплата тарифа {label}</b>\n\n"
+    "Сумма: <b>{amount} ₽</b>\n"
+    "После оплаты подписка активируется автоматически."
+)
+
+TEXT_SUBSCRIPTION_ACTIVE = "🔓 У вас активная подписка. Открываю анализатор..."
+TEXT_FREE_ANALYSIS = "🔓 Бесплатный анализ ({count}/3 на сегодня).\nВставляй переписку и получай советы!"
+TEXT_FREE_LIMIT_EXCEEDED = "⛔ Лимит бесплатных анализов (3 в день) исчерпан.\nОформи подписку."
+TEXT_PAYMENT_SUCCESS = "✅ Оплата подтверждена! Подписка активна."
+TEXT_PAYMENT_CHECKING = "⏳ Статус платежа: <b>{status}</b>. Подождите ещё немного."
+TEXT_PAYMENT_CHECK_FAIL = "⏳ Не удалось проверить статус. Попробуйте позже."
+TEXT_PAYMENT_NOT_FOUND = "❌ Платёж не найден."
+TEXT_PAYMENT_ERROR = "❌ Ошибка при создании платежа. Попробуйте позже."
+
+TEXT_REMINDER = (
+    "⏳ <b>Напоминание</b>\n\n"
+    "Ваша подписка <b>{plan}</b> истекает через {days} дня.\n"
+    "Продлите её!\n\n"
+    "💰 Нажмите «💎 Тарифы»."
+)
+
+TEXT_EXPIRED = (
+    "❌ <b>Подписка истекла</b>\n\n"
+    "Ваша подписка больше не активна.\n"
+    "Чтобы продолжить, оформите новую.\n\n"
+    "💰 Нажмите «💎 Тарифы»."
+)
+
+TEXT_FORWARD_TO_SUPPORT = "✅ Сообщение отправлено в поддержку. Мы ответим в ближайшее время!"
+
 # ----- Инициализация БД (SQLite) -----
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -361,7 +463,7 @@ def answer_callback(callback_id, text=""):
 def main_menu():
     return {
         "keyboard": [
-            [{"text": "🚀 Новый анализ"}],
+            [{"text": "🚀 Новый 분석"}],
             [{"text": "📊 Мой прогресс"}],
             [{"text": "💎 Тарифы"}],
             [{"text": "👥 B2B"}],
@@ -394,6 +496,25 @@ def support_keyboard():
         ]
     }
 
+def kb_show_tariffs():
+    return {"inline_keyboard": [[{"text": "💎 Перейти к тарифам", "callback_data": "show_tariffs"}]]}
+
+def kb_b2b_actions():
+    return {
+        "inline_keyboard": [
+            [{"text": "🏢 Создать компанию", "callback_data": "create_company"}],
+            [{"text": "🔑 Ввести код приглашения", "callback_data": "join_company"}]
+        ]
+    }
+
+def kb_payment(payment_id, confirmation_url):
+    return {
+        "inline_keyboard": [
+            [{"text": "💳 Перейти к оплате", "url": confirmation_url}],
+            [{"text": "🔄 Проверить статус", "callback_data": f"check_payment_{payment_id}"}]
+        ]
+    }
+
 # ----- Обработка обновлений -----
 def process_update(update):
     if "message" in update:
@@ -407,25 +528,19 @@ def process_update(update):
         text = msg.get("text", "")
 
         if text.startswith("/start"):
-            send_message(chat_id,
-                         f"🌊 Привет, {first_name}!\n\n"
-                         "Я <b>SaleFlow</b> — твой личный коуч по продажам.\n"
-                         "За 60 секунд покажу, где ты теряешь клиента и как это исправить.\n\n"
-                         "▶️ Нажми «Новый анализ» и вставь переписку — я дам конкретные советы.",
-                         reply_markup=main_menu())
+            send_message(chat_id, TEXT_START % first_name, reply_markup=main_menu())
 
         elif text == "🚀 Новый анализ":
             sub = get_active_subscription(user_id)
             if sub:
-                send_message(chat_id, "🔓 У вас активная подписка. Открываю анализатор...", reply_markup=webapp_button())
+                send_message(chat_id, TEXT_SUBSCRIPTION_ACTIVE, reply_markup=webapp_button())
                 return
             count, today = get_free_analyses_today(user_id)
             if count < 3:
                 increment_free_analyses(user_id)
-                send_message(chat_id, f"🔓 Бесплатный анализ ({count+1}/3 на сегодня).\nВставляй переписку и получай советы!", reply_markup=webapp_button())
+                send_message(chat_id, TEXT_FREE_ANALYSIS.format(count=count+1), reply_markup=webapp_button())
             else:
-                kb = {"inline_keyboard": [[{"text": "💎 Перейти к тарифам", "callback_data": "show_tariffs"}]]}
-                send_message(chat_id, "⛔ Лимит бесплатных анализов (3 в день) исчерпан.\nОформи подписку.", reply_markup=kb)
+                send_message(chat_id, TEXT_FREE_LIMIT_EXCEEDED, reply_markup=kb_show_tariffs())
 
         elif text == "📊 Мой прогресс":
             sub = get_active_subscription(user_id)
@@ -433,38 +548,18 @@ def process_update(update):
             if sub:
                 answer = f"📈 <b>Твой прогресс</b>\n\nТариф: <b>{sub['plan_type'].upper()}</b>\nДействует до: {sub['end_date']}\n\n"
             else:
-                answer = "📈 <b>Твой прогресс</b>\n\nУ тебя нет активной подписки.\n"
+                answer = TEXT_PROGRESS_NO_SUB
             if history:
-                answer += "Последние анализы:\n"
+                answer += TEXT_PROGRESS_HISTORY_HEADER
                 for h in history:
-                    answer += f"• {h['created_at'][:10]}: {h['score']}/100, найдено {h['markers_found']} маркеров\n"
+                    date = h['created_at'][:10]
+                    answer += TEXT_PROGRESS_HISTORY_LINE.format(date=date, score=h['score'], markers=h['markers_found'])
             else:
-                answer += "Пока нет истории анализов. Сделай первый анализ!"
+                answer += TEXT_PROGRESS_NO_HISTORY
             send_message(chat_id, answer, reply_markup=main_menu())
 
         elif text == "💎 Тарифы":
-            tariffs_text = (
-                "💰 <b>Выбери тариф</b>\n\n"
-                "🔓 <b>Pro</b> — 990 ₽/мес\n"
-                "✅ Безлимитный анализ\n"
-                "✅ История всех ошибок\n"
-                "✅ PDF-отчёт\n"
-                "✅ 3 варианта ответа\n\n"
-                "👑 <b>Premium</b> — 1 990 ₽/мес\n"
-                "✅ Всё, что в Pro\n"
-                "✅ Приоритетная поддержка 24/7\n"
-                "✅ Расширенная аналитика (10+ параметров)\n"
-                "✅ 5 видов отчётов\n"
-                "✅ Сравнение с топ-продавцами\n\n"
-                "🏢 <b>B2B</b> — 4 990 ₽/мес (до 10 чел)\n"
-                "✅ Всё, что в Premium для всей команды\n"
-                "✅ Панель управления командой\n"
-                "✅ Тренды ошибок по сотрудникам\n"
-                "✅ Рекомендации для обучения\n"
-                "✅ Общая статистика\n\n"
-                "🎁 Нажми «Активировать 7 дней бесплатно», чтобы попробовать Pro."
-            )
-            send_message(chat_id, tariffs_text, reply_markup=tariffs_keyboard())
+            send_message(chat_id, TEXT_TARIFFS, reply_markup=tariffs_keyboard())
 
         elif text == "👥 B2B":
             company = get_company_for_user(user_id)
@@ -473,64 +568,4 @@ def process_update(update):
                 answer = f"🏢 <b>{company['name']}</b>\n\nКод приглашения: <code>{company['invite_code']}</code>\nСотрудников: {len(members)}\n\n<b>Сотрудники:</b>\n"
                 for m in members:
                     answer += f"• {m['first_name']} @{m['username'] or 'нет'}\n"
-                send_message(chat_id, answer, reply_markup=main_menu())
-            else:
-                kb = {"inline_keyboard": [
-                    [{"text": "🏢 Создать компанию", "callback_data": "create_company"}],
-                    [{"text": "🔑 Ввести код приглашения", "callback_data": "join_company"}]
-                ]}
-                send_message(chat_id,
-                             "👥 <b>B2B-функционал</b>\n\nВы можете создать компанию и приглашать сотрудников.\nИли введите код приглашения.",
-                             reply_markup=kb)
-
-        elif text == "❓ Поддержка":
-            send_message(chat_id,
-                         "📩 <b>Поддержка SaleFlow</b>\n\nЕсли у вас возникли вопросы или проблемы:\n• Нажмите кнопку «Написать в поддержку».\n• Или напишите напрямую: @LyokhaPatron\n\nМы ответим в течение 1–2 часов.",
-                         reply_markup=support_keyboard())
-
-        else:
-            # Пересылаем в поддержку
-            user = msg["from"]
-            forwarded_text = (
-                f"📩 <b>Сообщение от пользователя</b>\n"
-                f"ID: {user['id']}\n"
-                f"Имя: {user.get('first_name', '')} {user.get('last_name', '')}\n"
-                f"Username: @{user.get('username', 'нет')}\n\n"
-                f"<b>Текст:</b>\n{text}"
-            )
-            send_message(ADMIN_ID, forwarded_text)
-            send_message(chat_id, "✅ Сообщение отправлено в поддержку. Мы ответим в ближайшее время!")
-
-    elif "callback_query" in update:
-        callback = update["callback_query"]
-        chat_id = callback["message"]["chat"]["id"]
-        user_id = callback["from"]["id"]
-        data = callback["data"]
-        callback_id = callback["id"]
-
-        if data == "support":
-            send_message(chat_id,
-                         "📩 <b>Напишите ваше сообщение</b>\n\nОпишите проблему или вопрос — я отправлю его менеджеру поддержки.\nДля отмены отправьте /cancel.")
-            answer_callback(callback_id, "")
-            return
-
-        if data == "show_tariffs":
-            tariffs_text = (
-                "💰 <b>Выбери тариф</b>\n\n"
-                "🔓 Pro — 990 ₽/мес\n"
-                "👑 Premium — 1 990 ₽/мес\n"
-                "🏢 B2B — 4 990 ₽/мес (до 10 чел)"
-            )
-            send_message(chat_id, tariffs_text, reply_markup=tariffs_keyboard())
-            answer_callback(callback_id, "")
-            return
-
-        if data == "trial":
-            create_subscription(user_id, "pro_trial", 7)
-            send_message(chat_id,
-                         "✅ <b>Пробный период на 7 дней активирован!</b>\n\nТеперь у тебя безлимитный анализ, история и PDF-отчёты.\nНачни анализировать свои переписки прямо сейчас!")
-            answer_callback(callback_id, "Пробный период активирован!")
-            return
-
-        if data == "create_company":
-            send_message(chat_id, "🏢 <b
+                send_message(chat_id, answer, 
