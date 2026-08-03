@@ -493,4 +493,106 @@ def process_update(update):
             existing = cur.fetchone()
             conn.close()
             if existing:
+                        if data.startswith("tariff_"):
+            plan_map = {
+                "tariff_pro": {"plan": "pro", "amount": 990, "days": 30, "label": "Pro"},
+                "tariff_premium": {"plan": "premium", "amount": 1990, "days": 30, "label": "Premium"},
+                "tariff_b2b": {"plan": "b2b", "amount": 4990, "days": 30, "label": "B2B"}
+            }
+            plan_data = plan_map.get(data)
+            if not plan_data:
+                answer_callback(callback_id, "Неизвестный тариф")
+                return
+            amount = plan_data["amount"]
+            plan = plan_data["plan"]
+            label = plan_data["label"]
+            payment_id, confirmation_url = create_yookassa_payment(user_id, amount, f"SaleFlow {label}", plan)
+            if not confirmation_url:
+                send_message(chat_id, "❌ Ошибка при создании платежа. Попробуйте позже.")
+                answer_callback(callback_id, "")
+                return
+            create_payment(user_id, payment_id, int(amount * 100), "RUB", plan)
+            send_message(chat_id, f"💳 <b>Оплата тарифа {label}</b>\n\nСумма: <b>{amount} ₽</b>\nПосле оплаты подписка активируется автоматически.", reply_markup=kb_payment(payment_id, confirmation_url))
+            answer_callback(callback_id, "Ссылка на оплату создана")
+            return
+
+        if data.startswith("check_payment_"):
+            payment_id = data.replace("check_payment_", "")
+            payment = get_payment(payment_id)
+            if not payment:
+                send_message(chat_id, "❌ Платёж не найден.")
+                answer_callback(callback_id, "")
+                return
+            if payment["status"] == "succeeded":
+                send_message(chat_id, "✅ Оплата подтверждена! Подписка активна.")
+                answer_callback(callback_id, "")
+                return
+            url = f"https://api.yookassa.ru/v3/payments/{payment_id}"
+            auth = (YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
+            response = requests.get(url, auth=auth)
+            if response.status_code == 200:
+                resp_data = response.json()
+                status = resp_data.get("status")
+                if status == "succeeded":
+                    update_payment_status(payment_id, "succeeded")
+                    payment = get_payment(payment_id)
+                    if payment:
+                        days = 30 if payment["plan_type"] in ("pro", "premium", "b2b") else 30
+                        create_subscription(payment["user_id"], payment["plan_type"], days)
+                        send_message(chat_id, "✅ Оплата подтверждена! Подписка активирована.")
+                    else:
+                        send_message(chat_id, "❌ Ошибка: данные платежа не найдены.")
+                    answer_callback(callback_id, "")
+                    return
+                else:
+                    send_message(chat_id, f"⏳ Статус платежа: <b>{status}</b>. Подождите ещё немного.")
+                    answer_callback(callback_id, "")
+                    return
+            else:
+                send_message(chat_id, "❌ Не удалось проверить статус платежа.")
+                answer_callback(callback_id, "")
+                return
+
+# ----- Уведомления (фоновая задача) -----
+def send_notifications_loop():
+    while True:
+        try:
+            expiring = get_subscriptions_expiring_soon(3)
+            for sub in expiring:
+                days_left = (datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S") - datetime.utcnow()).days
+                send_message(sub["user_id"], f"⏳ Напоминание: ваша подписка <b>{sub['plan_type'].upper()}</b> истекает через {days_left} дня. Продлите её!")
+            expired = get_expired_subscriptions()
+            for sub in expired:
+                conn = get_db()
+                conn.execute("UPDATE subscriptions SET is_active = 0 WHERE id = ?", (sub["id"],))
+                conn.commit()
+                conn.close()
+                send_message(sub["user_id"], "❌ Ваша подписка истекла. Чтобы продолжить, оформите новую.")
+        except Exception as e:
+            logger.error(f"Ошибка в уведомлениях: {e}")
+        time.sleep(86400)
+
+threading.Thread(target=send_notifications_loop, daemon=True).start()
+
+# ----- Основной цикл -----
+def get_updates(offset):
+    r = requests.get(f"{BOT_API}/getUpdates", params={"offset": offset, "timeout": 30})
+    if r.status_code == 200:
+        data = r.json()
+        if data["ok"] and data["result"]:
+            for update in data["result"]:
+                offset = update["update_id"] + 1
+                process_update(update)
+        else:
+            time.sleep(1)
+    return offset
+
+if __name__ == "__main__":
+    logger.info("✅ SaleFlow бот запущен")
+    while True:
+        try:
+            offset = get_updates(offset)
+        except Exception as e:
+            logger.error(f"Ошибка в основном цикле: {e}")
+            time.sleep(5)
     
