@@ -6,9 +6,9 @@
 
 body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    background: #f0f4f9;
+    background: #f0f9f6;
     padding: 16px;
-    color: #1e293b;
+    color: #0f2e2a;
     line-height: 1.5;
 }
 
@@ -24,20 +24,30 @@ body {
 
 .header {
     margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .header h1 {
     font-size: 28px;
     font-weight: 700;
-    color: #0f172a;
+    color: #0f2e2a;
     letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #0f2e2a, #1a6b5a);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.header .wave {
+    font-size: 32px;
 }
 
 .subtitle {
-    color: #64748b;
+    color: #4a7b6e;
     font-size: 15px;
     font-weight: 500;
-    margin-top: 4px;
+    margin-top: 2px;
 }
 
 .step {
@@ -62,22 +72,23 @@ body {
 textarea {
     width: 100%;
     padding: 16px;
-    border: 2px solid #e2e8f0;
+    border: 2px solid #d1e8e2;
     border-radius: 14px;
     font-size: 15px;
     font-family: 'Inter', sans-serif;
     resize: vertical;
     min-height: 160px;
     transition: border-color 0.2s;
+    background: #fafffe;
 }
 
 textarea:focus {
     outline: none;
-    border-color: #3b82f6;
+    border-color: #1a6b5a;
 }
 
 .btn-primary {
-    background: #0f172a;
+    background: linear-gradient(135deg, #1a6b5a, #0f2e2a);
     color: white;
     border: none;
     padding: 16px 0;
@@ -85,12 +96,14 @@ textarea:focus {
     font-size: 17px;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.2s, transform 0.1s;
+    transition: transform 0.2s, box-shadow 0.2s;
     width: 100%;
+    box-shadow: 0 4px 12px rgba(26, 107, 90, 0.3);
 }
 
 .btn-primary:hover {
-    background: #1e293b;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(26, 107, 90, 0.4);
 }
 
 .btn-primary:active {
@@ -99,19 +112,18 @@ textarea:focus {
 
 .hint {
     font-size: 13px;
-    color: #94a3b8;
+    color: #7a9e93;
     text-align: center;
     margin-top: 4px;
 }
 
-/* ---- Результат ---- */
 .result-card {
     background: #ffffff;
     border-radius: 16px;
     padding: 20px;
     margin-bottom: 20px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    border: 1px solid #f1f5f9;
+    border: 1px solid #e8f2ef;
 }
 
 .big-score {
@@ -122,42 +134,50 @@ textarea:focus {
     letter-spacing: -1px;
 }
 
-.score-good { color: #22c55e; }
-.score-medium { color: #f59e0b; }
-.score-bad { color: #ef4444; }
+.score-good {
+    color: #1a6b5a;
+}
+
+.score-medium {
+    color: #c47b2e;
+}
+
+.score-bad {
+    color: #c0392b;
+}
 
 .score-label {
     text-align: center;
     font-size: 14px;
-    color: #64748b;
+    color: #4a7b6e;
     font-weight: 500;
     margin-top: 2px;
 }
 
 .error-box {
-    background: #fef2f2;
-    border-left: 4px solid #ef4444;
+    background: #fdf0ee;
+    border-left: 4px solid #c0392b;
     padding: 16px 18px;
     border-radius: 12px;
     margin: 16px 0;
 }
 
 .error-box strong {
-    color: #b91c1c;
+    color: #a93226;
     display: block;
     margin-bottom: 4px;
 }
 
 .suggestion-box {
-    background: #f0fdf4;
-    border-left: 4px solid #22c55e;
+    background: #eaf7f2;
+    border-left: 4px solid #1a6b5a;
     padding: 16px 18px;
     border-radius: 12px;
     margin: 16px 0;
 }
 
 .suggestion-box strong {
-    color: #15803d;
+    color: #0f4a3f;
     display: block;
     margin-bottom: 4px;
 }
@@ -180,13 +200,13 @@ textarea:focus {
 }
 
 .feedback-item.positive {
-    background: #f0fdf4;
-    color: #166534;
+    background: #eaf7f2;
+    color: #0f4a3f;
 }
 
 .feedback-item.negative {
-    background: #fef2f2;
-    color: #991b1b;
+    background: #fdf0ee;
+    color: #a93226;
 }
 
 .draft-buttons {
@@ -199,24 +219,24 @@ textarea:focus {
 .draft-buttons button {
     flex: 1;
     min-width: 80px;
-    background: #f1f5f9;
+    background: #e8f2ef;
     border: none;
     padding: 12px 8px;
     border-radius: 10px;
     font-weight: 600;
     font-size: 14px;
-    color: #1e293b;
+    color: #0f2e2a;
     cursor: pointer;
     transition: background 0.2s;
 }
 
 .draft-buttons button:hover {
-    background: #e2e8f0;
+    background: #d1e8e2;
 }
 
 .btn-reset {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: #e8f2ef;
+    color: #0f2e2a;
     border: none;
     padding: 14px 0;
     border-radius: 14px;
@@ -229,10 +249,13 @@ textarea:focus {
 }
 
 .btn-reset:hover {
-    background: #e2e8f0;
+    background: #d1e8e2;
 }
 
-.emoji-big {
-    font-size: 28px;
-    margin-right: 6px;
-  }
+.footer-brand {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 12px;
+    color: #7a9e93;
+    letter-spacing: 0.5px;
+    }
