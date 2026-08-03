@@ -1,182 +1,28 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-    <title>SaleFlow – анализ переписки</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            background: #f0f9f6;
-            padding: 16px;
-            color: #0f2e2a;
-            line-height: 1.5;
-        }
-        #app {
-            max-width: 600px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 24px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.08);
-            overflow: hidden;
-            padding: 24px;
-        }
-        .header { margin-bottom: 24px; display: flex; align-items: center; gap: 12px; }
-        .header h1 {
-            font-size: 28px;
-            font-weight: 700;
-            color: #0f2e2a;
-            letter-spacing: -0.5px;
-            background: linear-gradient(135deg, #0f2e2a, #1a6b5a);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .header .wave { font-size: 32px; }
-        .subtitle { color: #4a7b6e; font-size: 15px; font-weight: 500; margin-top: 2px; }
-        .step { animation: fadeIn 0.3s ease; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .upload-area { display: flex; flex-direction: column; gap: 16px; }
-        .upload-area p { margin: 0; }
-        textarea {
-            width: 100%;
-            padding: 16px;
-            border: 2px solid #d1e8e2;
-            border-radius: 14px;
-            font-size: 15px;
-            font-family: 'Inter', sans-serif;
-            resize: vertical;
-            min-height: 160px;
-            transition: border-color 0.2s;
-            background: #fafffe;
-        }
-        textarea:focus { outline: none; border-color: #1a6b5a; }
-        .btn-primary {
-            background: linear-gradient(135deg, #1a6b5a, #0f2e2a);
-            color: white;
-            border: none;
-            padding: 16px 0;
-            border-radius: 14px;
-            font-size: 17px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            width: 100%;
-            box-shadow: 0 4px 12px rgba(26, 107, 90, 0.3);
-        }
-        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(26, 107, 90, 0.4); }
-        .btn-primary:active { transform: scale(0.98); }
-        .hint { font-size: 13px; color: #7a9e93; text-align: center; margin-top: 4px; }
-        .result-card {
-            background: #ffffff;
-            border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-            border: 1px solid #e8f2ef;
-        }
-        .big-score { font-size: 52px; font-weight: 700; text-align: center; line-height: 1.2; letter-spacing: -1px; }
-        .score-good { color: #1a6b5a; }
-        .score-medium { color: #c47b2e; }
-        .score-bad { color: #c0392b; }
-        .score-label { text-align: center; font-size: 14px; color: #4a7b6e; font-weight: 500; margin-top: 2px; }
-        .error-box {
-            background: #fdf0ee;
-            border-left: 4px solid #c0392b;
-            padding: 16px 18px;
-            border-radius: 12px;
-            margin: 16px 0;
-        }
-        .error-box strong { color: #a93226; display: block; margin-bottom: 4px; }
-        .suggestion-box {
-            background: #eaf7f2;
-            border-left: 4px solid #1a6b5a;
-            padding: 16px 18px;
-            border-radius: 12px;
-            margin: 16px 0;
-        }
-        .suggestion-box strong { color: #0f4a3f; display: block; margin-bottom: 4px; }
-        .feedback-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
-        .feedback-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 12px;
-            background: #f8fafc;
-            border-radius: 10px;
-            font-size: 14px;
-        }
-        .feedback-item.positive { background: #eaf7f2; color: #0f4a3f; }
-        .feedback-item.negative { background: #fdf0ee; color: #a93226; }
-        .draft-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
-        .draft-buttons button {
-            flex: 1;
-            min-width: 80px;
-            background: #e8f2ef;
-            border: none;
-            padding: 12px 8px;
-            border-radius: 10px;
-            font-weight: 600;
-            font-size: 14px;
-            color: #0f2e2a;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        .draft-buttons button:hover { background: #d1e8e2; }
-        .btn-reset {
-            background: #e8f2ef;
-            color: #0f2e2a;
-            border: none;
-            padding: 14px 0;
-            border-radius: 14px;
-            font-weight: 600;
-            font-size: 16px;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 8px;
-            transition: background 0.2s;
-        }
-        .btn-reset:hover { background: #d1e8e2; }
-        .emoji-big { font-size: 28px; margin-right: 6px; }
-        .footer-brand {
-            text-align: center;
-            margin-top: 16px;
-            font-size: 12px;
-            color: #7a9e93;
-            letter-spacing: 0.5px;
-        }
-    </style>
+    <title>Тест</title>
 </head>
 <body>
-    <div id="app">
-        <div class="header">
-            <span class="wave">🌊</span>
-            <div>
-                <h1>SaleFlow</h1>
-                <div class="subtitle">Личный коуч по продажам</div>
-            </div>
-        </div>
+    <h1>Тестовая страница</h1>
+    <button id="analyze-btn">Нажми меня</button>
 
-        <div id="step-upload" class="step">
-            <div class="upload-area">
-                <p><strong>Вставьте текст переписки</strong></p>
-                <p style="font-size:0.9rem; color:#4a7b6e;">Скопируйте диалог из мессенджера и вставьте ниже</p>
-                <textarea id="dialog-input" rows="8" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?&#10;..."></textarea>
-                <button id="analyze-btn" class="btn-primary">🔍 Анализировать</button>
-                <p class="hint">Данные обрабатываются локально, мы не храним их на сервере</p>
-            </div>
-        </div>
+    <script>
+        // Этот скрипт выполняется сразу при загрузке страницы
+        alert('Страница загружена!');
 
-        <div id="step-result" class="step" style="display:none;"></div>
-        <div class="footer-brand">🌊 SaleFlow — продавай уверенно</div>
-    </div>
-
-    <script src="app.js"></script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var btn = document.getElementById('analyze-btn');
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    alert('Кнопка работает!');
+                });
+            } else {
+                alert('Кнопка не найдена!');
+            }
+        });
+    </script>
 </body>
-            </html>
+</html>
