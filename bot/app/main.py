@@ -67,16 +67,8 @@ def get_active_subscription(user_id):
     cur = conn.execute("SELECT * FROM subscriptions WHERE user_id = ? AND is_active = 1 AND end_date > datetime('now') ORDER BY end_date DESC LIMIT 1", (user_id,))
     return cur.fetchone()
 
-def has_active_trial(user_id):
-    conn = get_db()
-    cur = conn.execute("SELECT * FROM subscriptions WHERE user_id = ? AND plan_type = 'trial' AND is_active = 1 AND end_date > datetime('now')", (user_id,))
-    result = cur.fetchone()
-    conn.close()
-    return result is not None
-
 def create_trial_subscription(user_id):
     conn = get_db()
-    # Проверяем, не было ли уже trial (даже неактивного)
     cur = conn.execute("SELECT * FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
     existing = cur.fetchone()
     if existing:
@@ -357,7 +349,6 @@ SUB_EXPIRED = """
 
 💰 Нажмите «💎 Тарифы», чтобы выбрать подходящий тариф.
 """
-
 # ----- Обработка обновлений -----
 def process_update(update):
     if "message" in update:
@@ -410,7 +401,6 @@ def process_update(update):
         text = msg.get("text", "")
 
         if text.startswith("/start"):
-            # При первом запуске создаём пробный период
             sub = get_active_subscription(user_id)
             if not sub:
                 create_trial_subscription(user_id)
@@ -457,7 +447,6 @@ def process_update(update):
             send_message(chat_id, SUPPORT_TEXT, reply_markup=support_keyboard())
 
         else:
-            # Пересылаем в поддержку
             user = msg["from"]
             forwarded_text = (
                 f"📩 <b>Сообщение от пользователя</b>\n"
@@ -487,13 +476,32 @@ def process_update(update):
             return
 
         if data == "trial":
-            # Проверяем, был ли уже активирован trial
             conn = get_db()
             cur = conn.execute("SELECT * FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
             existing = cur.fetchone()
             conn.close()
             if existing:
-                        if data.startswith("tariff_"):
+                send_message(chat_id, "❌ Вы уже активировали пробный период ранее.")
+                answer_callback(callback_id, "Триал уже был активирован")
+                return
+            create_subscription(user_id, "trial", 7)
+            send_message(chat_id, TRIAL_ACTIVATED)
+            answer_callback(callback_id, "Пробный период активирован")
+            return
+
+        if data == "create_company":
+            user_states[user_id] = 'creating_company'
+            send_message(chat_id, "🏢 Введите название вашей компании (например, «ООО Ромашка»).")
+            answer_callback(callback_id, "")
+            return
+
+        if data == "join_company":
+            user_states[user_id] = 'joining_company'
+            send_message(chat_id, "🔑 Введите код приглашения (8 символов, например, A1B2C3D4).")
+            answer_callback(callback_id, "")
+            return
+
+        if data.startswith("tariff_"):
             plan_map = {
                 "tariff_pro": {"plan": "pro", "amount": 990, "days": 30, "label": "Pro"},
                 "tariff_premium": {"plan": "premium", "amount": 1990, "days": 30, "label": "Premium"},
@@ -595,4 +603,3 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"Ошибка в основном цикле: {e}")
             time.sleep(5)
-    
