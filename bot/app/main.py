@@ -25,7 +25,6 @@ if not TOKEN:
     sys.exit(1)
 
 ADMIN_ID = int(os.getenv("ADMIN_ID", "5629144056"))
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "@LyokhaPatron")
 BASE_URL = os.getenv("BASE_URL", "https://your-bot.onrender.com")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
@@ -300,7 +299,7 @@ class Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/payment-success":
             self.send_response(200)
             self.end_headers()
-            html = "<html><body><h1>Payment successful!</h1><p>Subscription activated.</p></body></html>"
+            html = "<html><body><h1>Payment successful</h1><p>Subscription activated</p></body></html>"
             self.wfile.write(html.encode('utf-8'))
         else:
             self.send_response(404)
@@ -380,9 +379,9 @@ def webapp_button():
 def tariffs_keyboard():
     return {
         "inline_keyboard": [
-            [{"text": "🔓 Pro — 990 RUB/mo", "callback_data": "tariff_pro"}],
-            [{"text": "👑 Premium — 1990 RUB/mo", "callback_data": "tariff_premium"}],
-            [{"text": "🏢 B2B — 4990 RUB/mo (up to 10)", "callback_data": "tariff_b2b"}],
+            [{"text": "🔓 Pro - 990 RUB/mo", "callback_data": "tariff_pro"}],
+            [{"text": "👑 Premium - 1990 RUB/mo", "callback_data": "tariff_premium"}],
+            [{"text": "🏢 B2B - 4990 RUB/mo (up to 10)", "callback_data": "tariff_b2b"}],
             [{"text": "🎁 7 days free trial", "callback_data": "trial"}]
         ]
     }
@@ -413,6 +412,66 @@ def kb_payment(payment_id, confirmation_url):
         ]
     }
 
+# ----- Тексты (безопасные, без сложных кавычек) -----
+WELCOME = """
+🌊 Hello, {first_name}!
+
+I'm <b>SaleFlow</b> — your personal sales coach.
+In 60 seconds I'll show you where you lose clients and how to fix it.
+
+▶️ Press 'New analysis' and paste the conversation — I'll give specific advice.
+"""
+
+TARIFFS_TEXT = """
+💰 <b>Choose a tariff</b>
+
+🔓 <b>Pro</b> - 990 RUB/mo
+✅ Unlimited analysis
+✅ Error history
+✅ PDF report
+✅ 3 answer options
+
+👑 <b>Premium</b> - 1990 RUB/mo
+✅ Everything in Pro
+✅ 24/7 priority support
+✅ Advanced analytics (10+ parameters)
+✅ 5 report types
+✅ Comparison with top sellers
+
+🏢 <b>B2B</b> - 4990 RUB/mo (up to 10 users)
+✅ Everything in Premium for the team
+✅ Team dashboard
+✅ Error trends by employee
+✅ Training recommendations
+✅ General statistics
+
+🎁 Press '7 days free trial' to try Pro.
+"""
+
+SUPPORT_TEXT = """
+📩 <b>SaleFlow Support</b>
+
+If you have questions or problems:
+• Press 'Contact support'.
+• Or write directly: @LyokhaPatron
+
+We will respond within 1-2 hours.
+"""
+
+B2B_TEXT = """
+👥 <b>B2B functionality</b>
+
+You can create a company and invite employees.
+Or enter an invitation code.
+"""
+
+TRIAL_ACTIVATED = """
+✅ 7-day free trial activated!
+
+You now have unlimited analysis, history and PDF reports.
+Start analyzing your conversations right now!
+"""
+
 # ----- Обработка -----
 def process_update(update):
     if "message" in update:
@@ -426,13 +485,7 @@ def process_update(update):
         text = msg.get("text", "")
 
         if text.startswith("/start"):
-            welcome = (
-                f"🌊 Hello, {first_name}!\n\n"
-                "I'm <b>SaleFlow</b> — your personal sales coach.\n"
-                "In 60 seconds I'll show you where you lose clients and how to fix it.\n\n"
-                "▶️ Press 'New analysis' and paste the conversation — I'll give specific advice."
-            )
-            send_message(chat_id, welcome, reply_markup=main_menu())
+            send_message(chat_id, WELCOME.format(first_name=first_name), reply_markup=main_menu())
 
         elif text == "🚀 New analysis":
             sub = get_active_subscription(user_id)
@@ -463,28 +516,7 @@ def process_update(update):
             send_message(chat_id, answer, reply_markup=main_menu())
 
         elif text == "💎 Tariffs":
-            tariffs_text = (
-                "💰 <b>Choose a tariff</b>\n\n"
-                "🔓 <b>Pro</b> — 990 RUB/mo\n"
-                "✅ Unlimited analysis\n"
-                "✅ Error history\n"
-                "✅ PDF report\n"
-                "✅ 3 answer options\n\n"
-                "👑 <b>Premium</b> — 1990 RUB/mo\n"
-                "✅ Everything in Pro\n"
-                "✅ 24/7 priority support\n"
-                "✅ Advanced analytics (10+ parameters)\n"
-                "✅ 5 report types\n"
-                "✅ Comparison with top sellers\n\n"
-                "🏢 <b>B2B</b> — 4990 RUB/mo (up to 10 users)\n"
-                "✅ Everything in Premium for the team\n"
-                "✅ Team dashboard\n"
-                "✅ Error trends by employee\n"
-                "✅ Training recommendations\n"
-                "✅ General statistics\n\n"
-                "🎁 Press '7 days free trial' to try Pro."
-            )
-            send_message(chat_id, tariffs_text, reply_markup=tariffs_keyboard())
+            send_message(chat_id, TARIFFS_TEXT, reply_markup=tariffs_keyboard())
 
         elif text == "👥 B2B":
             company = get_company_for_user(user_id)
@@ -495,17 +527,10 @@ def process_update(update):
                     answer += f"• {m['first_name']} @{m['username'] or 'no'}\n"
                 send_message(chat_id, answer, reply_markup=main_menu())
             else:
-                send_message(chat_id, "👥 <b>B2B functionality</b>\n\nYou can create a company and invite employees.\nOr enter an invitation code.", reply_markup=kb_b2b_actions())
+                send_message(chat_id, B2B_TEXT, reply_markup=kb_b2b_actions())
 
         elif text == "❓ Support":
-            support_text = (
-                "📩 <b>SaleFlow Support</b>\n\n"
-                "If you have questions or problems:\n"
-                "• Press 'Contact support'.\n"
-                "• Or write directly: @LyokhaPatron\n\n"
-                "We will respond within 1-2 hours."
-            )
-            send_message(chat_id, support_text, reply_markup=support_keyboard())
+            send_message(chat_id, SUPPORT_TEXT, reply_markup=support_keyboard())
 
         else:
             user = msg["from"]
@@ -538,5 +563,20 @@ def process_update(update):
 
         if data == "trial":
             create_subscription(user_id, "pro_trial", 7)
-            send_message(chat_id, "✅ 7-day free trial activated!\n\nYou now have unlimited analysis, history and PDF reports.\nStart analyzing your conversations right now!")
-            answer_callback(callback_id, "Tr
+            send_message(chat_id, TRIAL_ACTIVATED)
+            answer_callback(callback_id, "Trial activated")
+            return
+
+        if data == "create_company":
+            send_message(chat_id, "🏢 Enter your company name (e.g., 'OOO Romashka').")
+            answer_callback(callback_id, "")
+            return
+
+        if data == "join_company":
+            send_message(chat_id, "🔑 Enter the invitation code (8 characters).")
+            answer_callback(callback_id, "")
+            return
+
+        if data.startswith("tariff_"):
+            plan_map = {
+                "tariff_pro": {"plan": "pro", "amount": 990, "day
