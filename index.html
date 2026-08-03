@@ -104,6 +104,19 @@
     </div>
 
     <script>
+        // Глобальная функция копирования
+        window.copyText = function(text) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('✅ Скопировано! Отправьте клиенту.');
+                }).catch(() => {
+                    alert(text);
+                });
+            } else {
+                alert(text);
+            }
+        };
+
         document.addEventListener('DOMContentLoaded', function() {
             const btn = document.getElementById('analyze-btn');
             const input = document.getElementById('dialog-input');
@@ -346,30 +359,26 @@
 
                         <div style="margin-top:16px;">
                             <strong>💬 Лучший ответ</strong>
-                            <div class="draft-buttons">
-                                <button onclick="copyText('${drafts.soft.replace(/'/g, "\\'")}')">Мягкий</button>
-                                <button onclick="copyText('${drafts.business.replace(/'/g, "\\'")}')">Деловой</button>
-                                <button onclick="copyText('${drafts.expert.replace(/'/g, "\\'")}')">Экспертный</button>
+                            <div class="draft-buttons" id="draft-buttons">
+                                <button data-text="${drafts.soft.replace(/"/g, '&quot;')}">Мягкий</button>
+                                <button data-text="${drafts.business.replace(/"/g, '&quot;')}">Деловой</button>
+                                <button data-text="${drafts.expert.replace(/"/g, '&quot;')}">Экспертный</button>
                             </div>
                         </div>
 
                         <button class="btn-reset" onclick="location.reload()">🔄 Новый анализ</button>
                     </div>
                 `;
+
+                // Привязываем кнопки через addEventListener (вместо onclick)
+                document.querySelectorAll('#draft-buttons button').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var text = this.getAttribute('data-text');
+                        window.copyText(text);
+                    });
+                });
             });
         });
-
-        function copyText(text) {
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(text).then(() => {
-                    alert('✅ Скопировано! Отправьте клиенту.');
-                }).catch(() => {
-                    alert(text);
-                });
-            } else {
-                alert(text);
-            }
-        }
     </script>
 </body>
     </html>
