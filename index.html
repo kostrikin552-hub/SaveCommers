@@ -3,33 +3,440 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>СейфКоммерс – анализ переписки</title>
-    <link rel="stylesheet" href="style.css">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>SaleFlow – анализ переписки</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #f0f9f6;
+            padding: 16px;
+            color: #0f2e2a;
+            line-height: 1.5;
+        }
+        #app {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+            overflow: hidden;
+            padding: 24px;
+        }
+        .header { margin-bottom: 24px; display: flex; align-items: center; gap: 12px; }
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #0f2e2a;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #0f2e2a, #1a6b5a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header .wave { font-size: 32px; }
+        .subtitle { color: #4a7b6e; font-size: 15px; font-weight: 500; margin-top: 2px; }
+        .step { animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .upload-area { display: flex; flex-direction: column; gap: 16px; }
+        .upload-area p { margin: 0; }
+        textarea {
+            width: 100%;
+            padding: 16px;
+            border: 2px solid #d1e8e2;
+            border-radius: 14px;
+            font-size: 15px;
+            font-family: 'Inter', sans-serif;
+            resize: vertical;
+            min-height: 160px;
+            transition: border-color 0.2s;
+            background: #fafffe;
+        }
+        textarea:focus { outline: none; border-color: #1a6b5a; }
+        .btn-primary {
+            background: linear-gradient(135deg, #1a6b5a, #0f2e2a);
+            color: white;
+            border: none;
+            padding: 16px 0;
+            border-radius: 14px;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            box-shadow: 0 4px 12px rgba(26, 107, 90, 0.3);
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(26, 107, 90, 0.4); }
+        .btn-primary:active { transform: scale(0.98); }
+        .hint { font-size: 13px; color: #7a9e93; text-align: center; margin-top: 4px; }
+        .result-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            border: 1px solid #e8f2ef;
+        }
+        .big-score { font-size: 52px; font-weight: 700; text-align: center; line-height: 1.2; letter-spacing: -1px; }
+        .score-good { color: #1a6b5a; }
+        .score-medium { color: #c47b2e; }
+        .score-bad { color: #c0392b; }
+        .score-label { text-align: center; font-size: 14px; color: #4a7b6e; font-weight: 500; margin-top: 2px; }
+        .error-box {
+            background: #fdf0ee;
+            border-left: 4px solid #c0392b;
+            padding: 16px 18px;
+            border-radius: 12px;
+            margin: 16px 0;
+        }
+        .error-box strong { color: #a93226; display: block; margin-bottom: 4px; }
+        .suggestion-box {
+            background: #eaf7f2;
+            border-left: 4px solid #1a6b5a;
+            padding: 16px 18px;
+            border-radius: 12px;
+            margin: 16px 0;
+        }
+        .suggestion-box strong { color: #0f4a3f; display: block; margin-bottom: 4px; }
+        .feedback-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+        .feedback-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f8fafc;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+        .feedback-item.positive { background: #eaf7f2; color: #0f4a3f; }
+        .feedback-item.negative { background: #fdf0ee; color: #a93226; }
+        .draft-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+        .draft-buttons button {
+            flex: 1;
+            min-width: 80px;
+            background: #e8f2ef;
+            border: none;
+            padding: 12px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            color: #0f2e2a;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .draft-buttons button:hover { background: #d1e8e2; }
+        .btn-reset {
+            background: #e8f2ef;
+            color: #0f2e2a;
+            border: none;
+            padding: 14px 0;
+            border-radius: 14px;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 8px;
+            transition: background 0.2s;
+        }
+        .btn-reset:hover { background: #d1e8e2; }
+        .emoji-big { font-size: 28px; margin-right: 6px; }
+        .footer-brand {
+            text-align: center;
+            margin-top: 16px;
+            font-size: 12px;
+            color: #7a9e93;
+            letter-spacing: 0.5px;
+        }
+    </style>
 </head>
 <body>
     <div id="app">
         <div class="header">
-            <h1>📊 СейфКоммерс</h1>
-            <p class="subtitle">Личный коуч по продажам</p>
+            <span class="wave">🌊</span>
+            <div>
+                <h1>SaleFlow</h1>
+                <div class="subtitle">Личный коуч по продажам</div>
+            </div>
         </div>
 
         <div id="step-upload" class="step">
             <div class="upload-area">
                 <p><strong>Вставьте текст переписки</strong></p>
-                <p style="font-size:0.9rem; color:#666;">Скопируйте диалог из мессенджера и вставьте ниже</p>
+                <p style="font-size:0.9rem; color:#4a7b6e;">Скопируйте диалог из мессенджера и вставьте ниже</p>
                 <textarea id="dialog-input" rows="8" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?&#10;..."></textarea>
                 <button id="analyze-btn" class="btn-primary">🔍 Анализировать</button>
                 <p class="hint">Данные обрабатываются локально, мы не храним их на сервере</p>
             </div>
         </div>
 
-        <div id="step-result" class="step" style="display:none;">
-            <!-- результат будет вставлен сюда -->
-        </div>
+        <div id="step-result" class="step" style="display:none;"></div>
+        <div class="footer-brand">🌊 SaleFlow — продавай уверенно</div>
     </div>
-    <script src="app.js"></script>
-</body>
-    </html>
+
+    <script>
+        // ===========================
+        // 30 ПРАВИЛ ДЛЯ ФРИЛАНСЕРОВ
+        // ===========================
+        const RULES = [
+            {
+                id: 'fast_response',
+                name: 'Ответь быстро',
+                category: 'Приветствие',
+                weight: 10,
+                check: (messages) => messages.length > 1,
+                negative: '✖ Нет быстрого ответа (клиент ждал)',
+                positive: '✔ Вы ответили оперативно',
+                suggestion: 'Старайтесь отвечать в течение 5 минут, если вы онлайн'
+            },
+            {
+                id: 'no_sell_before_diagnosis',
+                name: 'Не продавай до понимания задачи',
+                category: 'Первые сообщения',
+                weight: 10,
+                check: (messages) => {
+                    const first3 = messages.slice(0, 3).map(m => m.text.toLowerCase());
+                    const hasPrice = first3.some(t => /цена|стоимость|руб|\d{4,}/.test(t));
+                    return !hasPrice;
+                },
+                negative: '✖ Назвали цену до выяснения задачи',
+                positive: '✔ Сначала уточнили задачу, потом обсуждаете цену',
+                suggestion: 'Сначала задайте вопросы, чтобы понять задачу клиента'
+            },
+            {
+                id: 'questions_in_first_messages',
+                name: 'Первые 3 сообщения: 50% вопросов',
+                category: 'Первые сообщения',
+                weight: 10,
+                check: (messages) => {
+                    const first3 = messages.slice(0, 3).map(m => m.text);
+                    let questions = 0;
+                    first3.forEach(t => { if (/\?/.test(t)) questions++; });
+                    return questions >= 2;
+                },
+                negative: '✖ Мало вопросов в начале (менее 2 из первых 3 сообщений)',
+                positive: '✔ Задали много уточняющих вопросов',
+                suggestion: 'В первых трёх сообщениях должно быть минимум 2 открытых вопроса'
+            },
+            {
+                id: 'no_guessing',
+                name: 'Никогда не угадывай задачу',
+                category: 'Сбор информации',
+                weight: 8,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    return !/наверное|скорее всего|может быть|наверно/.test(text);
+                },
+                negative: '✖ Угадываете задачу ("наверное", "скорее всего")',
+                positive: '✔ Уточняете, а не додумываете',
+                suggestion: 'Не додумывайте, лучше задайте уточняющий вопрос'
+            },
+            {
+                id: 'client_goal',
+                name: 'Узнай цель клиента',
+                category: 'Сбор информации',
+                weight: 10,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    return /цель|результат|задача|получить|достичь/.test(text);
+                },
+                negative: '✖ Не выяснили цель клиента',
+                positive: '✔ Узнали, какой результат нужен клиенту',
+                suggestion: 'Спросите: "Какой результат должен получиться?"'
+            },
+            {
+                id: 'deadline',
+                name: 'Узнай срок',
+                category: 'Сбор информации',
+                weight: 7,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    return /когда|срок|дедлайн|готов|день|неделя|месяц|завтра/.test(text);
+                },
+                negative: '✖ Не уточнили сроки',
+                positive: '✔ Уточнили желаемый срок выполнения',
+                suggestion: 'Спросите: "Когда должен быть готов результат?"'
+            },
+            {
+                id: 'constraints',
+                name: 'Узнай ограничения',
+                category: 'Сбор информации',
+                weight: 8,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    return /ограничени|бюджет|срок|требован|нужно|нельзя|должно/.test(text);
+                },
+                negative: '✖ Не выяснили ограничения (бюджет, сроки, тех. требования)',
+                positive: '✔ Уточнили все ограничения клиента',
+                suggestion: 'Спросите про бюджет, сроки и технические требования'
+            },
+            {
+                id: 'budget_direct',
+                name: 'Спроси бюджет напрямую',
+                category: 'Бюджет',
+                weight: 10,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    return /бюджет|сумма|сколько готовы|какой бюджет/.test(text);
+                },
+                negative: '✖ Не спросили про бюджет',
+                positive: '✔ Прямо спросили про бюджет',
+                suggestion: 'Спросите: "Какой бюджет вы рассматриваете на эту задачу?"'
+            },
+            {
+                id: 'budget_range',
+                name: 'Если бюджета нет — выясни диапазон',
+                category: 'Бюджет',
+                weight: 8,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    return /\d{3,}\s*[-–]\s*\d{3,}|около|\~|примерно|от\s*\d{3,}\s*до/.test(text);
+                },
+                negative: '✖ Не предложили диапазон бюджета',
+                positive: '✔ Предложили ориентировочный диапазон',
+                suggestion: 'Предложите: "Рассматриваете уровень около 30–50 тыс. или выше?"'
+            },
+            {
+                id: 'price_after_diagnosis',
+                name: 'Не называй цену до диагностики',
+                category: 'Цена',
+                weight: 10,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    const hasPrice = /цена|стоимость|руб|\d{4,}/.test(text);
+                    const hasQuestions = /\?/.test(text);
+                    const priceIndex = text.search(/цена|стоимость|руб|\d{4,}/);
+                    const questionIndex = text.search(/\?/);
+                    if (priceIndex !== -1 && questionIndex !== -1) {
+                        return priceIndex > questionIndex;
+                    }
+                    return !hasPrice || hasQuestions;
+                },
+                negative: '✖ Назвали цену до того, как выяснили задачу',
+                positive: '✔ Цена названа после диагностики',
+                suggestion: 'Сначала выясните задачу, потом называйте цену'
+            },
+            {
+                id: 'summary_before_price',
+                name: 'Перед ценой сделай резюме',
+                category: 'Цена',
+                weight: 9,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    const priceMatch = text.match(/(\d{3,}|\bцена\b|\bстоимость\b)/);
+                    if (!priceMatch) return true;
+                    const beforePrice = text.substring(0, priceMatch.index);
+                    return beforePrice.length > 30 && /задача|проект|работа|сделать/.test(beforePrice);
+                },
+                negative: '✖ Цена названа без резюме задачи',
+                positive: '✔ Перед ценой кратко описали задачу',
+                suggestion: 'Перед ценой скажите: "Правильно понял: нужен сайт на 8 страниц. Стоимость — 50 000"'
+            },
+            {
+                id: 'price_explained',
+                name: 'Цена всегда объясняется',
+                category: 'Цена',
+                weight: 10,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    const priceExists = /\d{3,}|цена|стоимость/.test(text);
+                    if (!priceExists) return true;
+                    return /включает|входит|состоит|из чего|исследование|разработка|дизайн|интеграция/.test(text);
+                },
+                negative: '✖ Цена не объяснена',
+                positive: '✔ Объяснили, из чего складывается цена',
+                suggestion: 'Объясните: "Стоимость включает исследование, разработку, две итерации правок"'
+            },
+            {
+                id: 'no_price_apology',
+                name: 'Не оправдывай цену',
+                category: 'Цена',
+                weight: 9,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    return !/(извините.*цена|к сожалению.*дорого|простите.*стоимость|дорого.*извините)/.test(text);
+                },
+                negative: '✖ Оправдываете цену ("извините, дорого")',
+                positive: '✔ Уверенно называете стоимость',
+                suggestion: 'Не извиняйтесь за цену. Скажите: "Это стоимость полного решения задачи"'
+            },
+            {
+                id: 'sell_result',
+                name: 'Продавай результат',
+                category: 'Презентация',
+                weight: 9,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    return /результат|польза|выгода|экономия|увеличит|повысит|упростит/.test(text);
+                },
+                negative: '✖ Говорите о процессе, а не о результате',
+                positive: '✔ Показываете пользу для клиента',
+                suggestion: 'Говорите о результате: "Сделаю дизайн, который упростит путь пользователя к заявке"'
+            },
+            {
+                id: 'client_language',
+                name: 'Используй язык клиента',
+                category: 'Презентация',
+                weight: 8,
+                check: (messages) => {
+                    const clientMsgs = messages.filter((m, i) => i % 2 === 0).map(m => m.text.toLowerCase().split(' '));
+                    const managerMsgs = messages.filter((m, i) => i % 2 === 1).map(m => m.text.toLowerCase().split(' '));
+                    const clientWords = new Set(clientMsgs.flat());
+                    let matches = 0;
+                    managerMsgs.forEach(words => {
+                        words.forEach(w => {
+                            if (clientWords.has(w) && w.length > 3) matches++;
+                        });
+                    });
+                    return matches >= 3;
+                },
+                negative: '✖ Не используете термины клиента',
+                positive: '✔ Повторяете ключевые слова клиента',
+                suggestion: 'Используйте слова, которые говорит клиент (например, он сказал "сайт" — вы говорите "сайт")'
+            },
+            {
+                id: 'no_biography',
+                name: 'Не рассказывай биографию',
+                category: 'Презентация',
+                weight: 7,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    const selfReferences = (text.match(/я|меня|мой|моя|моего|моим|моей/g) || []).length;
+                    return selfReferences < 6;
+                },
+                negative: '✖ Слишком много о себе (биография)',
+                positive: '✔ Кратко о себе, больше о клиенте',
+                suggestion: 'Не более 2 предложений о себе. Говорите о клиенте и его задачах'
+            },
+            {
+                id: 'numbers_proof',
+                name: 'Доказывай цифрами',
+                category: 'Доверие',
+                weight: 8,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    return /\d{2,}|%|процент|тысяч|миллион|клиентов|проектов|лет/.test(text);
+                },
+                negative: '✖ Нет цифр и фактов',
+                positive: '✔ Используете цифры для убедительности',
+                suggestion: 'Добавьте цифры: "Выполнил 48 проектов за последний год"'
+            },
+            {
+                id: 'no_overpromise',
+                name: 'Не обещай невозможное',
+                category: 'Этика',
+                weight: 7,
+                check: (messages) => {
+                    const text = messages.map(m => m.text.toLowerCase()).join(' ');
+                    return !/(гарантирую.*успех|100%.*результат|абсолютно точно|точно будет)/.test(text);
+                },
+                negative: '✖ Обещаете невозможное ("гарантирую успех")',
+                positive: '✔ Даёте реалистичные обещания',
+                suggestion: 'Не обещайте 100% результат. Скажите: "Сделаю всё, чтобы проект достиг цели"'
+            },
+            {
+                id: 'move_deal_forward',
+                name: 'Каждо
