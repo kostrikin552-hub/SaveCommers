@@ -1,9 +1,238 @@
-css
-body { font-family: system-ui; background: #f5f7fb; padding: 16px; }
-#app { max-width: 600px; margin: auto; background: white; padding: 24px; border-radius: 16px; }
-textarea { width: 100%; padding: 12px; box-sizing: border-box; }
-button { background: #1e293b; color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; margin-top: 12px; }
-.big-score { font-size: 48px; text-align: center; }
-.error-card { background: #fee2e2; padding: 12px; border-radius: 8px; }
-.draft-buttons { display: flex; gap: 8px; }
-.draft-buttons button { background: #e2e8f0; color: #1e293b; }
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #f0f4f9;
+    padding: 16px;
+    color: #1e293b;
+    line-height: 1.5;
+}
+
+#app {
+    max-width: 600px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 24px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+    overflow: hidden;
+    padding: 24px;
+}
+
+.header {
+    margin-bottom: 24px;
+}
+
+.header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.5px;
+}
+
+.subtitle {
+    color: #64748b;
+    font-size: 15px;
+    font-weight: 500;
+    margin-top: 4px;
+}
+
+.step {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.upload-area {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.upload-area p {
+    margin: 0;
+}
+
+textarea {
+    width: 100%;
+    padding: 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 14px;
+    font-size: 15px;
+    font-family: 'Inter', sans-serif;
+    resize: vertical;
+    min-height: 160px;
+    transition: border-color 0.2s;
+}
+
+textarea:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.btn-primary {
+    background: #0f172a;
+    color: white;
+    border: none;
+    padding: 16px 0;
+    border-radius: 14px;
+    font-size: 17px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    width: 100%;
+}
+
+.btn-primary:hover {
+    background: #1e293b;
+}
+
+.btn-primary:active {
+    transform: scale(0.98);
+}
+
+.hint {
+    font-size: 13px;
+    color: #94a3b8;
+    text-align: center;
+    margin-top: 4px;
+}
+
+/* ---- Результат ---- */
+.result-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    border: 1px solid #f1f5f9;
+}
+
+.big-score {
+    font-size: 52px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.2;
+    letter-spacing: -1px;
+}
+
+.score-good { color: #22c55e; }
+.score-medium { color: #f59e0b; }
+.score-bad { color: #ef4444; }
+
+.score-label {
+    text-align: center;
+    font-size: 14px;
+    color: #64748b;
+    font-weight: 500;
+    margin-top: 2px;
+}
+
+.error-box {
+    background: #fef2f2;
+    border-left: 4px solid #ef4444;
+    padding: 16px 18px;
+    border-radius: 12px;
+    margin: 16px 0;
+}
+
+.error-box strong {
+    color: #b91c1c;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.suggestion-box {
+    background: #f0fdf4;
+    border-left: 4px solid #22c55e;
+    padding: 16px 18px;
+    border-radius: 12px;
+    margin: 16px 0;
+}
+
+.suggestion-box strong {
+    color: #15803d;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.feedback-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.feedback-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #f8fafc;
+    border-radius: 10px;
+    font-size: 14px;
+}
+
+.feedback-item.positive {
+    background: #f0fdf4;
+    color: #166534;
+}
+
+.feedback-item.negative {
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+.draft-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 12px 0;
+}
+
+.draft-buttons button {
+    flex: 1;
+    min-width: 80px;
+    background: #f1f5f9;
+    border: none;
+    padding: 12px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 14px;
+    color: #1e293b;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.draft-buttons button:hover {
+    background: #e2e8f0;
+}
+
+.btn-reset {
+    background: #f1f5f9;
+    color: #1e293b;
+    border: none;
+    padding: 14px 0;
+    border-radius: 14px;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 8px;
+    transition: background 0.2s;
+}
+
+.btn-reset:hover {
+    background: #e2e8f0;
+}
+
+.emoji-big {
+    font-size: 28px;
+    margin-right: 6px;
+  }
