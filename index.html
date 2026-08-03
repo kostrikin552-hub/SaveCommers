@@ -1,23 +1,35 @@
-html
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>СейфКоммерс</title>
+    <title>СейфКоммерс – анализ переписки</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
 </head>
 <body>
     <div id="app">
-        <h1>📊 СейфКоммерс</h1>
-        <div id="step-upload">
-            <p>Вставьте текст переписки:</p>
-            <textarea id="dialog-input" rows="10" placeholder="Клиент: Здравствуйте..."></textarea>
-            <button id="analyze-btn">🔍 Анализировать</button>
-            <p style="font-size:0.8em; color:#888;">Данные обрабатываются локально.</p>
+        <div class="header">
+            <h1>📊 СейфКоммерс</h1>
+            <p class="subtitle">Личный коуч по продажам</p>
         </div>
-        <div id="step-result" style="display:none;"></div>
+
+        <div id="step-upload" class="step">
+            <div class="upload-area">
+                <p><strong>Вставьте текст переписки</strong></p>
+                <p style="font-size:0.9rem; color:#666;">Скопируйте диалог из мессенджера и вставьте ниже</p>
+                <textarea id="dialog-input" rows="8" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?&#10;..."></textarea>
+                <button id="analyze-btn" class="btn-primary">🔍 Анализировать</button>
+                <p class="hint">Данные обрабатываются локально, мы не храним их на сервере</p>
+            </div>
+        </div>
+
+        <div id="step-result" class="step" style="display:none;">
+            <!-- результат будет вставлен сюда -->
+        </div>
     </div>
     <script src="app.js"></script>
 </body>
-              </html>
+    </html>
