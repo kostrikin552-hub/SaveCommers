@@ -53,7 +53,7 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
-# ----- Функции БД -----
+# ----- Функции БД (исправлены ошибки с параметрами) -----
 def upsert_user(user_id, username, first_name, last_name):
     conn = get_db()
     conn.execute("INSERT OR REPLACE INTO users (user_id, username, first_name, last_name) VALUES (?, ?, ?, ?)", (user_id, username, first_name, last_name))
@@ -67,13 +67,18 @@ def get_active_subscription(user_id):
 
 def get_subscriptions_expiring_soon(days=3):
     conn = get_db()
-    cur = conn.execute("SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now', '+? days') AND end_date > datetime('now')", (days,))
-    return cur.fetchall()
+    # Исправлено: используем f-строку для вставки числа дней
+    cur = conn.execute(f"SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now', '+{days} days') AND end_date > datetime('now')")
+    result = cur.fetchall()
+    conn.close()
+    return result
 
 def get_expired_subscriptions():
     conn = get_db()
     cur = conn.execute("SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now')")
-    return cur.fetchall()
+    result = cur.fetchall()
+    conn.close()
+    return result
 
 def get_free_analyses_today(user_id):
     today = datetime.utcnow().date().isoformat()
@@ -133,8 +138,9 @@ def get_company_members(company_id):
 def create_company(owner_id, name):
     conn = get_db()
     invite_code = str(uuid.uuid4())[:8].upper()
-    cur = conn.execute("INSERT INTO companies (name, owner_id, invite_code) VALUES (?, ?, ?) RETURNING id", (name, owner_id, invite_code))
-    company_id = cur.fetchone()[0]
+    # Исправлено: SQLite не поддерживает RETURNING, используем last_insert_rowid
+    conn.execute("INSERT INTO companies (name, owner_id, invite_code) VALUES (?, ?, ?)", (name, owner_id, invite_code))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute("INSERT INTO company_members (company_id, user_id, role) VALUES (?, ?, 'admin')", (company_id, owner_id))
     conn.commit()
     conn.close()
@@ -164,13 +170,21 @@ def create_yookassa_payment(user_id, amount, description, plan_type):
         return resp["id"], resp["confirmation"]["confirmation_url"]
     return None, None
 
-# ----- HTTP-сервер -----
+# ----- HTTP-сервер (добавлена поддержка HEAD) -----
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/" or self.path == "/payment-success":
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"SaleFlow bot is running")
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_HEAD(self):
+        if self.path == "/" or self.path == "/payment-success":
+            self.send_response(200)
+            self.end_headers()
         else:
             self.send_response(404)
             self.end_headers()
@@ -209,7 +223,7 @@ def run_http_server():
 
 threading.Thread(target=run_http_server, daemon=True).start()
 
-# ----- Бот -----
+# ----- Функции бота -----
 def send_message(chat_id, text, reply_markup=None):
     url = f"{BOT_API}/sendMessage"
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True}
@@ -496,7 +510,6 @@ def process_update(update):
                 answer_callback(callback_id, "")
                 return
 
-# Дальше идёт закрытие функции и остальной код:
 # ----- Уведомления (фоновая задача) -----
 def send_notifications_loop():
     while True:
