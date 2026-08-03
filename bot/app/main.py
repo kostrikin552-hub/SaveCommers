@@ -393,7 +393,7 @@ def create_yookassa_payment(user_id, amount, description, plan_type):
         return resp["id"], resp["confirmation"]["confirmation_url"]
     return None, None
 
-# ----- HTTP-сервер -----
+# ----- HTTP-сервер (исправлены байтовые строки с кириллицей) -----
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -404,7 +404,9 @@ class Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/payment-success":
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(b"<html><body><h1>Оплата прошла успешно!</h1><p>Подписка активирована.</p></body></html>")
+            # Исправлено: используем обычную строку и кодируем в UTF-8
+            html = "<html><body><h1>Оплата прошла успешно!</h1><p>Подписка активирована.</p></body></html>"
+            self.wfile.write(html.encode('utf-8'))
         else:
             self.send_response(404)
             self.end_headers()
@@ -463,7 +465,7 @@ def answer_callback(callback_id, text=""):
 def main_menu():
     return {
         "keyboard": [
-            [{"text": "🚀 Новый 분석"}],
+            [{"text": "🚀 Новый анализ"}],
             [{"text": "📊 Мой прогресс"}],
             [{"text": "💎 Тарифы"}],
             [{"text": "👥 B2B"}],
@@ -566,6 +568,4 @@ def process_update(update):
             if company:
                 members = get_company_members(company["id"])
                 answer = f"🏢 <b>{company['name']}</b>\n\nКод приглашения: <code>{company['invite_code']}</code>\nСотрудников: {len(members)}\n\n<b>Сотрудники:</b>\n"
-                for m in members:
-                    answer += f"• {m['first_name']} @{m['username'] or 'нет'}\n"
-                send_message(chat_id, answer, 
+     
