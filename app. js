@@ -489,4 +489,146 @@ function analyzeDialogFull(messages) {
             passed += rule.weight;
             positives.push(rule.positive);
             results.push({
-                n
+                                name: rule.name,
+                passed: true,
+                weight: rule.weight,
+                suggestion: rule.suggestion
+            });
+        } else {
+            negatives.push(rule.negative);
+            results.push({
+                name: rule.name,
+                passed: false,
+                weight: rule.weight,
+                suggestion: rule.suggestion
+            });
+        }
+    });
+
+    let score = Math.round((passed / totalWeight) * 100);
+    score = Math.min(100, Math.max(0, score));
+
+    let mainError = null;
+    const firstFailed = results.find(r => !r.passed);
+    if (firstFailed) {
+        mainError = {
+            name: firstFailed.name,
+            suggestion: firstFailed.suggestion,
+            description: negatives[0] || 'Ошибка не определена'
+        };
+    } else {
+        mainError = {
+            name: 'Отличный диалог!',
+            suggestion: 'Продолжайте в том же духе',
+            description: 'Вы справились со всеми правилами!'
+        };
+    }
+
+    const hasPriceObjection = messages.map(m => m.text.toLowerCase()).join(' ').includes('дорого');
+    const drafts = generateDraftsFull(messages, hasPriceObjection);
+
+    return {
+        score,
+        mainError,
+        positives,
+        negatives,
+        drafts,
+        results
+    };
+}
+
+// ----- Генерация черновиков -----
+function generateDraftsFull(messages, hasPriceObjection) {
+    const clientMsg = messages.filter((m, i) => i % 2 === 0).pop();
+    const clientText = clientMsg ? clientMsg.text : '';
+
+    let soft = 'Понимаю ваше беспокойство. Давайте вместе разберёмся в этом вопросе.';
+    let business = 'Благодарю за обращение. Предлагаю обсудить детали.';
+    let expert = 'Отличный вопрос. На основе моего опыта, рекомендую...';
+
+    if (hasPriceObjection && clientText) {
+        soft = 'Понимаю, что цена — важный фактор. Давайте посмотрим, что входит в стоимость, и я покажу, как это окупается.';
+        business = 'Спасибо за вопрос о цене. Мы предлагаем гибкие условия. Расскажите о вашем бюджете, и я подберу оптимальный вариант.';
+        expert = 'Хороший вопрос. На основе моего опыта, клиенты чаще всего выбирают комплексное решение, потому что оно даёт наибольшую выгоду.';
+    } else if (clientText) {
+        soft = 'Я слышу вас. Давайте вместе подумаем, как лучше решить эту задачу.';
+        business = 'Благодарю за детали. Исходя из вашего запроса, предлагаю следующий план...';
+        expert = 'На основе моего опыта, вот что я бы рекомендовал в вашей ситуации...';
+    }
+
+    soft += '\n\nЕсли готовы продолжить, давайте обсудим детали. Как вам такой подход?';
+    business += '\n\nПредлагаю перейти к следующему шагу. Какие вопросы у вас остались?';
+    expert += '\n\nРекомендую начать с анализа. Когда вам удобно созвониться?';
+
+    return { soft, business, expert };
+}
+
+// ----- Отображение результата -----
+function showResultFull(data) {
+    document.getElementById('step-upload').style.display = 'none';
+    const container = document.getElementById('step-result');
+    container.style.display = 'block';
+
+    const scoreColor = data.score >= 70 ? 'score-good' : (data.score >= 40 ? 'score-medium' : 'score-bad');
+
+    const topPositives = data.positives.slice(0, 5);
+    const topNegatives = data.negatives.slice(0, 5);
+
+    let positivesHtml = topPositives.map(p => `<div class="feedback-item positive">${p}</div>`).join('');
+    let negativesHtml = topNegatives.map(n => `<div class="feedback-item negative">${n}</div>`).join('');
+
+    if (topNegatives.length === 0 && data.positives.length > 5) {
+        positivesHtml = data.positives.map(p => `<div class="feedback-item positive">${p}</div>`).join('');
+    }
+
+    container.innerHTML = `
+        <div class="result-card">
+            <div class="big-score ${scoreColor}">${data.score}/100</div>
+            <div class="score-label">Индекс качества диалога</div>
+
+            <div class="error-box">
+                <strong>🔥 Главная ошибка</strong>
+                <p><strong>${data.mainError.name}</strong></p>
+                <p>${data.mainError.description}</p>
+            </div>
+
+            <div class="suggestion-box">
+                <strong>💡 Как исправить</strong>
+                <p>${data.mainError.suggestion}</p>
+            </div>
+
+            <div style="margin-top:16px;">
+                <div><strong>✅ Что получилось хорошо</strong></div>
+                <div class="feedback-list">${positivesHtml || '<p style="color:#4a7b6e;">Пока нет положительных моментов</p>'}</div>
+            </div>
+
+            <div style="margin-top:12px;">
+                <div><strong>❌ Что можно улучшить</strong></div>
+                <div class="feedback-list">${negativesHtml || '<p style="color:#4a7b6e;">Отлично, ошибок не найдено!</p>'}</div>
+            </div>
+
+            <div style="margin-top:16px;">
+                <strong>💬 Лучший ответ</strong>
+                <div class="draft-buttons">
+                    <button onclick="copyText('${data.drafts.soft.replace(/'/g, "\\'")}')">Мягкий</button>
+                    <button onclick="copyText('${data.drafts.business.replace(/'/g, "\\'")}')">Деловой</button>
+                    <button onclick="copyText('${data.drafts.expert.replace(/'/g, "\\'")}')">Экспертный</button>
+                </div>
+            </div>
+
+            <button class="btn-reset" onclick="location.reload()">🔄 Новый анализ</button>
+        </div>
+    `;
+}
+
+function copyText(text) {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+            alert('✅ Скопировано! Отправьте клиенту.');
+        }).catch(() => {
+            alert(text);
+        });
+    } else {
+        alert(text);
+    }
+}
