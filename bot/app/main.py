@@ -1,21 +1,32 @@
 import os
+import sys
 import time
 import json
 import uuid
 import threading
 import sqlite3
+import logging
+import traceback
 from datetime import datetime, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 import requests
 from dotenv import load_dotenv
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
 # ----- Конфигурация -----
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
-    raise ValueError("BOT_TOKEN not set")
+    logger.error("BOT_TOKEN not set")
+    sys.exit(1)
 
 ADMIN_ID = int(os.getenv("ADMIN_ID", "5629144056"))
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "@LyokhaPatron")
@@ -28,6 +39,7 @@ BOT_API = f"https://api.telegram.org/bot{TOKEN}"
 offset = 0
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data.db")
+logger.info(f"База данных будет создана в: {DB_PATH}")
 
 # ----- Тексты для сообщений (безопасные строки) -----
 TEXT_START = (
@@ -133,66 +145,72 @@ TEXT_FORWARD_TO_SUPPORT = "✅ Сообщение отправлено в под
 
 # ----- Инициализация БД (SQLite) -----
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
-        username TEXT,
-        first_name TEXT,
-        last_name TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS subscriptions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        plan_type TEXT,
-        status TEXT,
-        start_date TIMESTAMP,
-        end_date TIMESTAMP,
-        is_active INTEGER DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS payments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        payment_id TEXT UNIQUE,
-        amount INTEGER,
-        currency TEXT,
-        status TEXT,
-        plan_type TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS free_analyses (
-        user_id INTEGER PRIMARY KEY,
-        count INTEGER DEFAULT 0,
-        last_reset DATE NOT NULL
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS companies (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        owner_id INTEGER,
-        invite_code TEXT UNIQUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS company_members (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id INTEGER,
-        user_id INTEGER,
-        role TEXT DEFAULT 'member',
-        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(company_id, user_id)
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS analysis_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        score INTEGER,
-        markers_found INTEGER DEFAULT 0,
-        positives TEXT,
-        negatives TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            plan_type TEXT,
+            status TEXT,
+            start_date TIMESTAMP,
+            end_date TIMESTAMP,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            payment_id TEXT UNIQUE,
+            amount INTEGER,
+            currency TEXT,
+            status TEXT,
+            plan_type TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS free_analyses (
+            user_id INTEGER PRIMARY KEY,
+            count INTEGER DEFAULT 0,
+            last_reset DATE NOT NULL
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS companies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            owner_id INTEGER,
+            invite_code TEXT UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS company_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER,
+            user_id INTEGER,
+            role TEXT DEFAULT 'member',
+            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(company_id, user_id)
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS analysis_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            score INTEGER,
+            markers_found INTEGER DEFAULT 0,
+            positives TEXT,
+            negatives TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        conn.commit()
+        conn.close()
+        logger.info("База данных инициализирована успешно")
+    except Exception as e:
+        logger.error(f"Ошибка инициализации БД: {e}")
+        traceback.print_exc()
+        sys.exit(1)
 
 init_db()
 
@@ -404,7 +422,6 @@ class Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/payment-success":
             self.send_response(200)
             self.end_headers()
-            # Исправлено: используем обычную строку и кодируем в UTF-8
             html = "<html><body><h1>Оплата прошла успешно!</h1><p>Подписка активирована.</p></body></html>"
             self.wfile.write(html.encode('utf-8'))
         else:
@@ -435,7 +452,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(b"OK")
             except Exception as e:
-                print(f"Webhook error: {e}")
+                logger.error(f"Webhook error: {e}")
                 self.send_response(400)
                 self.end_headers()
         else:
@@ -445,9 +462,11 @@ class Handler(BaseHTTPRequestHandler):
 def start_http_server():
     port = int(os.getenv("PORT", 10000))
     server = HTTPServer(('', port), Handler)
+    logger.info(f"HTTP сервер запущен на порту {port}")
     server.serve_forever()
 
-threading.Thread(target=start_http_server, daemon=True).start()
+http_thread = threading.Thread(target=start_http_server, daemon=True)
+http_thread.start()
 
 # ----- Функции бота -----
 def send_message(chat_id, text, reply_markup=None):
@@ -554,18 +573,4 @@ def process_update(update):
             if history:
                 answer += TEXT_PROGRESS_HISTORY_HEADER
                 for h in history:
-                    date = h['created_at'][:10]
-                    answer += TEXT_PROGRESS_HISTORY_LINE.format(date=date, score=h['score'], markers=h['markers_found'])
-            else:
-                answer += TEXT_PROGRESS_NO_HISTORY
-            send_message(chat_id, answer, reply_markup=main_menu())
-
-        elif text == "💎 Тарифы":
-            send_message(chat_id, TEXT_TARIFFS, reply_markup=tariffs_keyboard())
-
-        elif text == "👥 B2B":
-            company = get_company_for_user(user_id)
-            if company:
-                members = get_company_members(company["id"])
-                answer = f"🏢 <b>{company['name']}</b>\n\nКод приглашения: <code>{company['invite_code']}</code>\nСотрудников: {len(members)}\n\n<b>Сотрудники:</b>\n"
-     
+                    date = h['c
