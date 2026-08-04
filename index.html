@@ -168,7 +168,7 @@ container.style.display='block';
 const scoreColor = score>=70 ? 'good' : (score>=40 ? 'medium' : 'bad');
 let posHtml = pos.slice(0,10).map(p => `<div class="feedback-item positive">${p}</div>`).join('');
 let negHtml = neg.slice(0,10).map(n => `<div class="feedback-item negative">${n}</div>`).join('');
-    container.innerHTML = `
+container.innerHTML = `
 <div class="score ${scoreColor}">${score}/100</div>
 <div style="text-align:center;color:#4a7b6e;margin-bottom:12px;">Индекс качества диалога</div>
 <div class="error-box"><strong>🔥 Главная ошибка</strong><p><strong>${err.name}</strong></p><p>${err.desc}</p></div>
@@ -199,4 +199,4 @@ navigator.clipboard.writeText(text).then(() => alert('✅ Скопировано
 });
 </script>
 </body>
-</html>
+    </html>
