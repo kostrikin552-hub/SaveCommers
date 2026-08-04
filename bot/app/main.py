@@ -16,8 +16,8 @@ YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://example.com")
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-me")
-
 BOT_API = f"https://api.telegram.org/bot{TOKEN}"
+
 offset = 0
 DB_PATH = "data.db"
 db_lock = threading.Lock()
@@ -34,18 +34,47 @@ def init_db():
         conn = sqlite3.connect(DB_PATH)
         conn.execute("PRAGMA journal_mode=WAL")
         c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, last_name TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, last_name TEXT, referrer_id INTEGER DEFAULT NULL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, plan_type TEXT, status TEXT, start_date TIMESTAMP, end_date TIMESTAMP, is_active INTEGER DEFAULT 1)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, payment_id TEXT UNIQUE, amount INTEGER, currency TEXT, status TEXT, plan_type TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, payment_id TEXT UNIQUE, amount INTEGER, currency TEXT, status TEXT, plan_type TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         c.execute('''CREATE TABLE IF NOT EXISTS companies (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, owner_id INTEGER, invite_code TEXT UNIQUE)''')
         c.execute('''CREATE TABLE IF NOT EXISTS company_members (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER, user_id INTEGER, role TEXT DEFAULT 'member', UNIQUE(company_id, user_id))''')
         c.execute('''CREATE TABLE IF NOT EXISTS analysis_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, score INTEGER, markers_found INTEGER DEFAULT 0, positives TEXT, negatives TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS referrals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            inviter_id INTEGER,
+            invited_id INTEGER UNIQUE,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            reward_given INTEGER DEFAULT 0
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS partners (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            contact TEXT,
+            balance INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS partner_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            partner_id INTEGER,
+            code TEXT UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS partner_leads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            partner_id INTEGER,
+            user_id INTEGER UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            paid INTEGER DEFAULT 0
+        )''')
         try:
-            c.execute("ALTER TABLE payments ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            c.execute("ALTER TABLE users ADD COLUMN referrer_id INTEGER DEFAULT NULL")
         except sqlite3.OperationalError:
             pass
         conn.commit()
         conn.close()
+
 init_db()
 
 def db():
@@ -141,7 +170,11 @@ def answer_cb(cb_id, text=""):
     requests.post(f"{BOT_API}/answerCallbackQuery", json={"callback_query_id": cb_id, "text": text})
 
 def main_menu():
-    return {"keyboard": [[{"text": "🚀 Новый анализ"}, {"text": "📊 Мой прогресс"}], [{"text": "💎 Тарифы"}, {"text": "👥 B2B"}], [{"text": "❓ Поддержка"}]], "resize_keyboard": True}
+    return {"keyboard": [
+        [{"text": "🚀 Новый анализ"}, {"text": "📊 Мой прогресс"}],
+        [{"text": "💎 Тарифы"}, {"text": "👥 B2B"}],
+        [{"text": "👥 Пригласить друга"}, {"text": "❓ Поддержка"}]
+    ], "resize_keyboard": True}
 
 def tariffs_kb():
     return {"inline_keyboard": [
@@ -150,6 +183,47 @@ def tariffs_kb():
         [{"text": "🏢 B2B 4990₽/мес (до 10 чел)", "callback_data": "tariff_b2b"}],
         [{"text": "🎁 Активировать 3 дня бесплатно", "callback_data": "trial"}]
     ]}
+
+def apply_referral_bonus(user_id):
+    """Начисление бонусных дней пользователю, который пригласил данного пользователя"""
+    inviter = db_fetchone("SELECT referrer_id FROM users WHERE user_id = ?", (user_id,))
+    if not inviter or not inviter["referrer_id"]:
+        return
+    inviter_id = inviter["referrer_id"]
+    bonus_days = 6  # 20% от 30 дней
+    current_sub = get_sub(inviter_id)
+    if current_sub:
+        db_execute("UPDATE subscriptions SET end_date = datetime(end_date, '+? days') WHERE user_id = ? AND is_active = 1", (bonus_days, inviter_id))
+        send_msg(inviter_id, f"🎉 Ваш друг оплатил подписку! Вы получили +{bonus_days} дней (20% от его тарифа).")
+    else:
+        create_sub(inviter_id, "bonus", bonus_days)
+        send_msg(inviter_id, f"🎉 Ваш друг оплатил подписку! Вам активировано {bonus_days} бесплатных дней.")
+    logger.info(f"Реферальный бонус: {inviter_id} получил {bonus_days} дней за пользователя {user_id}")
+
+def generate_partner_code(partner_id):
+    code = str(uuid.uuid4())[:8].upper()
+    db_execute("INSERT INTO partner_links (partner_id, code) VALUES (?, ?)", (partner_id, code))
+    return code
+
+def get_partner_by_code(code):
+    link = db_fetchone("SELECT partner_id FROM partner_links WHERE code = ?", (code,))
+    if link:
+        return db_fetchone("SELECT * FROM partners WHERE id = ?", (link["partner_id"],))
+    return None
+
+def apply_partner_bonus(user_id, amount_cents):
+    lead = db_fetchone("SELECT partner_id FROM partner_leads WHERE user_id = ? AND paid = 0", (user_id,))
+    if not lead:
+        return
+    partner_id = lead["partner_id"]
+    bonus = int(amount_cents * 0.2)  # 20%
+    db_execute("UPDATE partners SET balance = balance + ? WHERE id = ?", (bonus, partner_id))
+    db_execute("UPDATE partner_leads SET paid = 1 WHERE user_id = ?", (user_id,))
+    partner = db_fetchone("SELECT name, contact FROM partners WHERE id = ?", (partner_id,))
+    send_msg(ADMIN_ID, f"💰 Партнёр {partner['name']} получил бонус {bonus/100:.2f}₽ за пользователя {user_id}")
+    logger.info(f"Партнёр {partner_id} получил {bonus} копеек за пользователя {user_id}")
+
+# ---- HTTP-СЕРВЕР ----
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -168,14 +242,17 @@ class Handler(BaseHTTPRequestHandler):
                 obj = data.get("object", {})
                 user_id = int(obj.get("metadata", {}).get("user_id", 0))
                 plan_type = obj.get("metadata", {}).get("plan_type", "pro")
+                amount_cents = int(float(obj.get("amount", {}).get("value", 0)) * 100)
                 if user_id:
                     days = 30
                     create_sub(user_id, plan_type, days)
+                    apply_referral_bonus(user_id)
+                    apply_partner_bonus(user_id, amount_cents)
                     db_execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (obj.get("id"),))
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"OK")
-
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"OK")
+                # Запускаем HTTP-сервер в фоновом потоке
 threading.Thread(target=lambda: HTTPServer(('', int(os.getenv("PORT", 10000))), Handler).serve_forever(), daemon=True).start()
 
 def check_pending_payments():
@@ -194,6 +271,8 @@ def check_pending_payments():
                         db_execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (payment_id,))
                         days = 30
                         create_sub(payment["user_id"], payment["plan_type"], days)
+                        apply_referral_bonus(payment["user_id"])
+                        apply_partner_bonus(payment["user_id"], payment["amount"])
                     elif status in ("canceled", "expired"):
                         db_execute("UPDATE payments SET status = 'failed' WHERE payment_id = ?", (payment_id,))
         except Exception as e:
@@ -248,6 +327,38 @@ def process_update(update):
                     return
 
             if text.startswith("/start"):
+                ref_id = None
+                partner_code = None
+                if " " in text:
+                    parts = text.split()
+                    if len(parts) > 1:
+                        if parts[1].startswith("ref_"):
+                            try:
+                                ref_id = int(parts[1].replace("ref_", ""))
+                            except:
+                                pass
+                        elif parts[1].startswith("part_"):
+                            partner_code = parts[1].replace("part_", "")
+
+                if ref_id and ref_id != user_id:
+                    existing_ref = db_fetchone("SELECT referrer_id FROM users WHERE user_id = ?", (user_id,))
+                    if not existing_ref or existing_ref["referrer_id"] is None:
+                        db_execute("UPDATE users SET referrer_id = ? WHERE user_id = ?", (ref_id, user_id))
+                        send_msg(ref_id, f"👥 Пользователь {first_name} перешёл по вашей ссылке! Когда он оплатит подписку, вы получите +6 бонусных дней.")
+                        send_msg(chat_id, "🔗 Вы перешли по ссылке друга! После оплаты подписки ваш друг получит бонус.")
+
+                if partner_code:
+                    partner = get_partner_by_code(partner_code)
+                    if partner:
+                        existing_lead = db_fetchone("SELECT * FROM partner_leads WHERE user_id = ?", (user_id,))
+                        if not existing_lead:
+                            db_execute("INSERT INTO partner_leads (partner_id, user_id) VALUES (?, ?)", (partner["id"], user_id))
+                            send_msg(chat_id, f"🔗 Вы перешли по ссылке партнёра {partner['name']}. При покупке подписки партнёр получит бонус.")
+                        else:
+                            send_msg(chat_id, "🔗 Вы уже зарегистрированы")
+                    else:
+                        send_msg(chat_id, "❌ Неверный партнёрский код")
+
                 sub = get_sub(user_id)
                 if not sub:
                     create_sub(user_id, "trial", 3)
@@ -299,6 +410,18 @@ def process_update(update):
                     kb = {"inline_keyboard": [[{"text": "Создать компанию", "callback_data": "create_company"}], [{"text": "Ввести код", "callback_data": "join_company"}]]}
                     send_msg(chat_id, "👥 Создай компанию или введи код", kb)
 
+            elif text == "👥 Пригласить друга":
+                ref_link = f"https://t.me/SaveCommers_bot?start=ref_{user_id}"
+                send_msg(chat_id,
+                         f"👥 Пригласи друга и зарабатывай дни!\n\n"
+                         f"🔗 Твоя ссылка:\n<code>{ref_link}</code>\n\n"
+                         f"💰 Механика:\n"
+                         f"• Друг переходит по ссылке\n"
+                         f"• Покупает подписку\n"
+                         f"• Ты получаешь <b>+6 дней</b> (20% от его тарифа)\n\n"
+                         f"📣 Приведи 5 друзей → получи 30 дней бесплатно!",
+                         main_menu())
+
             elif text == "❓ Поддержка":
                 send_msg(chat_id, "📩 Напиши сообщение, я перешлю его @LyokhaPatron", {"inline_keyboard": [[{"text": "Написать", "callback_data": "support"}]]})
 
@@ -314,23 +437,52 @@ def process_update(update):
                     elif parts[0] == "/status":
                         target = int(parts[1]) if len(parts) > 1 else user_id
                         sub = get_sub(target)
-                        send_msg(chat_id, f"Статус {target}: {sub['plan_type'] if sub else 'Нет'} до {sub['end_date'] if sub else '—'}")
+                        send_msg(chat_id, f"Статус {target}: {sub['plan_type'] if sub else 'Нет'} до {sub['end_date'] if sub else '---'}")
                     elif parts[0] == "/deactivate" and len(parts) > 1:
                         target = int(parts[1])
                         db_execute("UPDATE subscriptions SET is_active = 0 WHERE user_id = ?", (target,))
                         send_msg(chat_id, f"✅ Деактивировано для {target}")
+                    elif parts[0] == "/add_partner" and len(parts) >= 3:
+                        name = parts[1]
+                        contact = " ".join(parts[2:])
+                        partner_id = db_execute_lastrowid("INSERT INTO partners (name, contact) VALUES (?, ?)", (name, contact))
+                        if partner_id:
+                            code = generate_partner_code(partner_id)
+                            send_msg(chat_id, f"✅ Партнёр {name} создан. Код: {code}\nСсылка: https://t.me/SaveCommers_bot?start=part_{code}")
+                        else:
+                            send_msg(chat_id, "❌ Ошибка")
+                    elif parts[0] == "/partner_balance" and len(parts) >= 2:
+                        partner_id = int(parts[1])
+                        partner = db_fetchone("SELECT * FROM partners WHERE id = ?", (partner_id,))
+                        if partner:
+                            send_msg(chat_id, f"Баланс {partner['name']}: {partner['balance']/100:.2f}₽")
+                        else:
+                            send_msg(chat_id, "❌ Не найден")
+                    elif parts[0] == "/partner_list":
+                        partners = db_fetchall("SELECT id, name, balance FROM partners")
+                        ans = "📋 Список партнёров:\n"
+                        for p in partners:
+                            ans += f"{p['id']}: {p['name']} — {p['balance']/100:.2f}₽\n"
+                        send_msg(chat_id, ans)
+                    elif parts[0] == "/partner_payout" and len(parts) >= 3:
+                        partner_id = int(parts[1])
+                        amount_rub = int(parts[2])
+                        amount_cents = amount_rub * 100
+                        db_execute("UPDATE partners SET balance = balance - ? WHERE id = ?", (amount_cents, partner_id))
+                        send_msg(chat_id, f"✅ Выплачено {amount_rub}₽ партнёру {partner_id}. Остаток: (посмотрите через /partner_balance)")
+                        logger.info(f"Выплата партнёру {partner_id}: {amount_rub}₽")
+                    else:
+                        pass
                 else:
-                    pass
-
-            else:
-                send_msg(ADMIN_ID, f"📩 От {user_id}: {text}")
-                send_msg(chat_id, "✅ Отправлено в поддержку")
+                    send_msg(ADMIN_ID, f"📩 От {user_id}: {text}")
+                    send_msg(chat_id, "✅ Отправлено в поддержку")
 
         elif "callback_query" in update:
             cb = update["callback_query"]
             user_id = cb["from"]["id"]
             data = cb["data"]
             chat_id = cb["message"]["chat"]["id"]
+
             if data == "support":
                 send_msg(chat_id, "📩 Напиши сообщение, я перешлю")
                 answer_cb(cb["id"], "")
@@ -371,6 +523,7 @@ def process_update(update):
                 else:
                     send_msg(chat_id, "❌ Ошибка оплаты")
                 answer_cb(cb["id"], "")
+
     except Exception as e:
         error_text = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_text)
@@ -383,8 +536,10 @@ def get_updates(offset):
             offset = u["update_id"] + 1
             process_update(u)
     return offset
+
 if __name__ == "__main__":
     logger.info("SaleFlow бот запущен")
+
     def notif_loop():
         while True:
             try:
@@ -402,7 +557,9 @@ if __name__ == "__main__":
                 logger.error(f"Уведомления: {e}")
                 send_error_to_admin(f"Ошибка уведомлений: {e}")
             time.sleep(86400)
+
     threading.Thread(target=notif_loop, daemon=True).start()
+
     while True:
         try:
             offset = get_updates(offset)
