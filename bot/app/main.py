@@ -40,11 +40,10 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS companies (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, owner_id INTEGER, invite_code TEXT UNIQUE)''')
         c.execute('''CREATE TABLE IF NOT EXISTS company_members (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER, user_id INTEGER, role TEXT DEFAULT 'member', UNIQUE(company_id, user_id))''')
         c.execute('''CREATE TABLE IF NOT EXISTS analysis_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, score INTEGER, markers_found INTEGER DEFAULT 0, positives TEXT, negatives TEXT)''')
-        # Добавляем колонку created_at в payments, если её нет
         try:
             c.execute("ALTER TABLE payments ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
         except sqlite3.OperationalError:
-            pass  # колонка уже существует
+            pass
         conn.commit()
         conn.close()
 init_db()
@@ -374,7 +373,15 @@ def process_update(update):
         error_text = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_text)
         send_error_to_admin(error_text)
-        if __name__ == "__main__":
+
+def get_updates(offset):
+    r = requests.get(f"{BOT_API}/getUpdates", params={"offset": offset, "timeout": 30})
+    if r.status_code == 200 and r.json()["ok"]:
+        for u in r.json()["result"]:
+            offset = u["update_id"] + 1
+            process_update(u)
+    return offset
+    if __name__ == "__main__":
     logger.info("SaleFlow бот запущен")
     def notif_loop():
         while True:
@@ -399,12 +406,3 @@ def process_update(update):
             logger.error(f"Основной цикл: {e}")
             send_error_to_admin(f"Ошибка основного цикла: {e}")
             time.sleep(5)
-
-def get_updates(offset):
-    r = requests.get(f"{BOT_API}/getUpdates", params={"offset": offset, "timeout": 30})
-    if r.status_code == 200 and r.json()["ok"]:
-        for u in r.json()["result"]:
-            offset = u["update_id"] + 1
-            process_update(u)
-    return offset
-    
