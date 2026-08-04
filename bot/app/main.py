@@ -31,122 +31,139 @@ BOT_API = f"https://api.telegram.org/bot{TOKEN}"
 offset = 0
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data.db")
 
+# ----- Глобальная блокировка для БД -----
+db_lock = threading.Lock()
+
 # ----- Состояния пользователей (для B2B) -----
 user_states = {}
 
-# ----- База данных -----
+# ----- Инициализация БД -----
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, last_name TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, plan_type TEXT, status TEXT, start_date TIMESTAMP, end_date TIMESTAMP, is_active INTEGER DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, payment_id TEXT UNIQUE, amount INTEGER, currency TEXT, status TEXT, plan_type TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS companies (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, owner_id INTEGER, invite_code TEXT UNIQUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS company_members (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER, user_id INTEGER, role TEXT DEFAULT 'member', joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(company_id, user_id))''')
-    c.execute('''CREATE TABLE IF NOT EXISTS analysis_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, score INTEGER, markers_found INTEGER DEFAULT 0, positives TEXT, negatives TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    conn.commit()
-    conn.close()
+    with db_lock:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA journal_mode=WAL")
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, last_name TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, plan_type TEXT, status TEXT, start_date TIMESTAMP, end_date TIMESTAMP, is_active INTEGER DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, payment_id TEXT UNIQUE, amount INTEGER, currency TEXT, status TEXT, plan_type TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS companies (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, owner_id INTEGER, invite_code TEXT UNIQUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS company_members (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER, user_id INTEGER, role TEXT DEFAULT 'member', joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(company_id, user_id))''')
+        c.execute('''CREATE TABLE IF NOT EXISTS analysis_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, score INTEGER, markers_found INTEGER DEFAULT 0, positives TEXT, negatives TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        conn.commit()
+        conn.close()
     logger.info("DB initialized")
 
 init_db()
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     return conn
 
+# ----- Обёртки для работы с БД с блокировкой -----
+def db_execute(query, params=()):
+    with db_lock:
+        conn = get_db()
+        try:
+            cursor = conn.execute(query, params)
+            conn.commit()
+            return cursor
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+
+def db_fetchone(query, params=()):
+    with db_lock:
+        conn = get_db()
+        try:
+            cursor = conn.execute(query, params)
+            return cursor.fetchone()
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+
+def db_fetchall(query, params=()):
+    with db_lock:
+        conn = get_db()
+        try:
+            cursor = conn.execute(query, params)
+            return cursor.fetchall()
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+
+def db_execute_lastrowid(query, params=()):
+    with db_lock:
+        conn = get_db()
+        try:
+            cursor = conn.execute(query, params)
+            conn.commit()
+            return cursor.lastrowid
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+
 # ----- Функции БД -----
 def upsert_user(user_id, username, first_name, last_name):
-    conn = get_db()
-    conn.execute("INSERT OR REPLACE INTO users (user_id, username, first_name, last_name) VALUES (?, ?, ?, ?)", (user_id, username, first_name, last_name))
-    conn.commit()
-    conn.close()
+    db_execute("INSERT OR REPLACE INTO users (user_id, username, first_name, last_name) VALUES (?, ?, ?, ?)", (user_id, username, first_name, last_name))
 
 def get_active_subscription(user_id):
-    conn = get_db()
-    cur = conn.execute("SELECT * FROM subscriptions WHERE user_id = ? AND is_active = 1 AND end_date > datetime('now') ORDER BY end_date DESC LIMIT 1", (user_id,))
-    return cur.fetchone()
+    return db_fetchone("SELECT * FROM subscriptions WHERE user_id = ? AND is_active = 1 AND end_date > datetime('now') ORDER BY end_date DESC LIMIT 1", (user_id,))
 
 def create_trial_subscription(user_id):
-    conn = get_db()
-    cur = conn.execute("SELECT * FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
-    existing = cur.fetchone()
+    existing = db_fetchone("SELECT * FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
     if existing:
-        conn.close()
         return False
-    conn.execute("INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (?, 'trial', 'active', datetime('now'), datetime('now', '+7 days'), 1)", (user_id,))
-    conn.commit()
-    conn.close()
+    db_execute("INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (?, 'trial', 'active', datetime('now'), datetime('now', '+7 days'), 1)", (user_id,))
     return True
 
 def get_subscriptions_expiring_soon(days=3):
-    conn = get_db()
-    cur = conn.execute(f"SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now', '+{days} days') AND end_date > datetime('now')")
-    result = cur.fetchall()
-    conn.close()
-    return result
+    return db_fetchall(f"SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now', '+{days} days') AND end_date > datetime('now')")
 
 def get_expired_subscriptions():
-    conn = get_db()
-    cur = conn.execute("SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now')")
-    result = cur.fetchall()
-    conn.close()
-    return result
+    return db_fetchall("SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now')")
 
 def create_subscription(user_id, plan_type, days):
-    conn = get_db()
-    conn.execute("UPDATE subscriptions SET is_active = 0 WHERE user_id = ?", (user_id,))
-    conn.execute("INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (?, ?, 'active', datetime('now'), datetime('now', '+? days'), 1)", (user_id, plan_type, days))
-    conn.commit()
-    conn.close()
+    db_execute("UPDATE subscriptions SET is_active = 0 WHERE user_id = ?", (user_id,))
+    db_execute("INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (?, ?, 'active', datetime('now'), datetime('now', '+? days'), 1)", (user_id, plan_type, days))
 
 def create_payment(user_id, payment_id, amount, currency, plan_type):
-    conn = get_db()
-    conn.execute("INSERT OR REPLACE INTO payments (user_id, payment_id, amount, currency, status, plan_type) VALUES (?, ?, ?, ?, 'pending', ?)", (user_id, payment_id, amount, currency, plan_type))
-    conn.commit()
-    conn.close()
+    db_execute("INSERT OR REPLACE INTO payments (user_id, payment_id, amount, currency, status, plan_type) VALUES (?, ?, ?, ?, 'pending', ?)", (user_id, payment_id, amount, currency, plan_type))
 
 def update_payment_status(payment_id, status):
-    conn = get_db()
-    conn.execute("UPDATE payments SET status = ? WHERE payment_id = ?", (status, payment_id))
-    conn.commit()
-    conn.close()
+    db_execute("UPDATE payments SET status = ? WHERE payment_id = ?", (status, payment_id))
 
 def get_payment(payment_id):
-    conn = get_db()
-    cur = conn.execute("SELECT * FROM payments WHERE payment_id = ?", (payment_id,))
-    return cur.fetchone()
+    return db_fetchone("SELECT * FROM payments WHERE payment_id = ?", (payment_id,))
 
 def get_company_for_user(user_id):
-    conn = get_db()
-    cur = conn.execute("SELECT company_id FROM company_members WHERE user_id = ?", (user_id,))
-    member = cur.fetchone()
+    member = db_fetchone("SELECT company_id FROM company_members WHERE user_id = ?", (user_id,))
     if member:
-        cur = conn.execute("SELECT * FROM companies WHERE id = ?", (member["company_id"],))
-        return cur.fetchone()
+        return db_fetchone("SELECT * FROM companies WHERE id = ?", (member["company_id"],))
     return None
 
 def get_company_members(company_id):
-    conn = get_db()
-    cur = conn.execute("SELECT cm.*, u.first_name, u.username FROM company_members cm JOIN users u ON cm.user_id = u.user_id WHERE cm.company_id = ?", (company_id,))
-    return cur.fetchall()
+    return db_fetchall("SELECT cm.*, u.first_name, u.username FROM company_members cm JOIN users u ON cm.user_id = u.user_id WHERE cm.company_id = ?", (company_id,))
 
 def create_company(owner_id, name):
     if len(name.strip()) < 2:
         return None
-    conn = get_db()
     invite_code = str(uuid.uuid4())[:8].upper()
-    conn.execute("INSERT INTO companies (name, owner_id, invite_code) VALUES (?, ?, ?)", (name.strip(), owner_id, invite_code))
-    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    conn.execute("INSERT INTO company_members (company_id, user_id, role) VALUES (?, ?, 'admin')", (company_id, owner_id))
-    conn.commit()
-    conn.close()
+    company_id = db_execute_lastrowid("INSERT INTO companies (name, owner_id, invite_code) VALUES (?, ?, ?)", (name.strip(), owner_id, invite_code))
+    db_execute("INSERT INTO company_members (company_id, user_id, role) VALUES (?, ?, 'admin')", (company_id, owner_id))
     return {"id": company_id, "invite_code": invite_code}
 
 def get_analysis_history(user_id, limit=5):
-    conn = get_db()
-    cur = conn.execute("SELECT * FROM analysis_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?", (user_id, limit))
-    return cur.fetchall()
+    return db_fetchall("SELECT * FROM analysis_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?", (user_id, limit))
 
 # ----- ЮKassa -----
 def create_yookassa_payment(user_id, amount, description, plan_type):
@@ -161,13 +178,15 @@ def create_yookassa_payment(user_id, amount, description, plan_type):
         "description": description,
         "metadata": {"user_id": str(user_id), "plan_type": plan_type}
     }
+    logger.info(f"ЮKassa запрос: shop_id={YOOKASSA_SHOP_ID}, data={data}")
     response = requests.post(url, json=data, headers=headers, auth=auth)
+    logger.info(f"ЮKassa ответ: {response.status_code} - {response.text}")
     if response.status_code in (200, 201):
         resp = response.json()
         return resp["id"], resp["confirmation"]["confirmation_url"]
     return None, None
 
-# ----- HTTP-сервер -----
+# ----- HTTP-сервер (с вебхуком и логированием) -----
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/" or self.path == "/payment-success":
@@ -192,21 +211,31 @@ class Handler(BaseHTTPRequestHandler):
             post_body = self.rfile.read(content_len)
             try:
                 data = json.loads(post_body)
-                if data.get("event") == "payment.succeeded":
-                    obj = data.get("object", {})
+                logger.info(f"Webhook received: {json.dumps(data, indent=2)}")
+                event = data.get("event")
+                obj = data.get("object", {})
+                if event == "payment.succeeded":
                     payment_id = obj.get("id")
                     metadata = obj.get("metadata", {})
                     user_id = int(metadata.get("user_id", 0))
                     plan_type = metadata.get("plan_type", "pro")
+                    logger.info(f"Payment succeeded: user_id={user_id}, plan_type={plan_type}, payment_id={payment_id}")
                     if user_id:
                         days = 30 if plan_type == "pro" else 60
                         create_subscription(user_id, plan_type, days)
                         update_payment_status(payment_id, "succeeded")
+                        logger.info(f"Subscription activated for user {user_id}")
+                elif event == "payment.canceled":
+                    payment_id = obj.get("id")
+                    update_payment_status(payment_id, "canceled")
+                    logger.info(f"Payment canceled: {payment_id}")
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(b"OK")
             except Exception as e:
                 logger.error(f"Webhook error: {e}")
+                import traceback
+                traceback.print_exc()
                 self.send_response(400)
                 self.end_headers()
         else:
@@ -349,257 +378,3 @@ SUB_EXPIRED = """
 
 💰 Нажмите «💎 Тарифы», чтобы выбрать подходящий тариф.
 """
-# ----- Обработка обновлений -----
-def process_update(update):
-    if "message" in update:
-        msg = update["message"]
-        chat_id = msg["chat"]["id"]
-        user_id = msg["from"]["id"]
-        username = msg["from"].get("username", "")
-        first_name = msg["from"].get("first_name", "")
-        last_name = msg["from"].get("last_name", "")
-        upsert_user(user_id, username, first_name, last_name)
-
-        # Проверяем состояние пользователя (для B2B)
-        if user_id in user_states and user_states[user_id] == 'creating_company':
-            company_name = msg.get("text", "").strip()
-            if len(company_name) < 2:
-                send_message(chat_id, "❌ Название должно содержать минимум 2 символа. Попробуйте снова.")
-                return
-            result = create_company(user_id, company_name)
-            if result:
-                send_message(chat_id, f"🏢 <b>Компания «{company_name}» создана!</b>\n\nКод приглашения: <code>{result['invite_code']}</code>\n\nОтправьте этот код сотрудникам, чтобы они присоединились.")
-            else:
-                send_message(chat_id, "❌ Ошибка при создании компании. Попробуйте позже.")
-            user_states.pop(user_id, None)
-            return
-
-        if user_id in user_states and user_states[user_id] == 'joining_company':
-            code = msg.get("text", "").strip().upper()
-            if len(code) != 8:
-                send_message(chat_id, "❌ Код должен состоять из 8 символов. Попробуйте снова.")
-                return
-            conn = get_db()
-            cur = conn.execute("SELECT * FROM companies WHERE invite_code = ?", (code,))
-            company = cur.fetchone()
-            conn.close()
-            if company:
-                conn = get_db()
-                cur = conn.execute("SELECT * FROM company_members WHERE user_id = ? AND company_id = ?", (user_id, company["id"]))
-                if cur.fetchone():
-                    send_message(chat_id, "❌ Вы уже состоите в этой компании.")
-                else:
-                    conn.execute("INSERT INTO company_members (company_id, user_id, role) VALUES (?, ?, 'member')", (company["id"], user_id))
-                    conn.commit()
-                    send_message(chat_id, f"✅ Вы присоединились к компании <b>{company['name']}</b>!")
-                conn.close()
-            else:
-                send_message(chat_id, "❌ Компания с таким кодом не найдена. Проверьте код и попробуйте снова.")
-            user_states.pop(user_id, None)
-            return
-
-        text = msg.get("text", "")
-
-        if text.startswith("/start"):
-            sub = get_active_subscription(user_id)
-            if not sub:
-                create_trial_subscription(user_id)
-            send_message(chat_id, WELCOME.format(first_name=first_name), reply_markup=main_menu())
-
-        elif text == "🚀 Новый анализ":
-            sub = get_active_subscription(user_id)
-            if sub:
-                send_message(chat_id, "🔓 У вас активная подписка. Открываю анализатор...", reply_markup=webapp_button())
-                return
-            else:
-                send_message(chat_id, SUB_EXPIRED, reply_markup=kb_show_tariffs())
-
-        elif text == "📊 Мой прогресс":
-            sub = get_active_subscription(user_id)
-            history = get_analysis_history(user_id)
-            if sub:
-                ans = f"📈 <b>Твой прогресс</b>\n\nТариф: <b>{sub['plan_type'].upper()}</b>\nДействует до: {sub['end_date']}\n\n"
-            else:
-                ans = "📈 <b>Твой прогресс</b>\n\nУ тебя нет активной подписки.\n"
-            if history:
-                ans += "Последние анализы:\n"
-                for h in history:
-                    ans += f"• {h['created_at'][:10]}: {h['score']}/100, найдено {h['markers_found']} маркеров\n"
-            else:
-                ans += "Пока нет истории анализов. Сделай первый анализ!"
-            send_message(chat_id, ans, reply_markup=main_menu())
-
-        elif text == "💎 Тарифы":
-            send_message(chat_id, TARIFFS_TEXT, reply_markup=tariffs_keyboard())
-
-        elif text == "👥 B2B":
-            company = get_company_for_user(user_id)
-            if company:
-                members = get_company_members(company["id"])
-                ans = f"🏢 <b>{company['name']}</b>\n\nКод приглашения: <code>{company['invite_code']}</code>\nСотрудников: {len(members)}\n\n<b>Сотрудники:</b>\n"
-                for m in members:
-                    ans += f"• {m['first_name']} @{m['username'] or 'нет'}\n"
-                send_message(chat_id, ans, reply_markup=main_menu())
-            else:
-                send_message(chat_id, B2B_TEXT, reply_markup=kb_b2b_actions())
-
-        elif text == "❓ Поддержка":
-            send_message(chat_id, SUPPORT_TEXT, reply_markup=support_keyboard())
-
-        else:
-            user = msg["from"]
-            forwarded_text = (
-                f"📩 <b>Сообщение от пользователя</b>\n"
-                f"ID: {user['id']}\n"
-                f"Имя: {user.get('first_name', '')} {user.get('last_name', '')}\n"
-                f"Username: @{user.get('username', 'нет')}\n\n"
-                f"<b>Текст:</b>\n{text}"
-            )
-            send_message(ADMIN_ID, forwarded_text)
-            send_message(chat_id, "✅ Сообщение отправлено в поддержку. Мы ответим в ближайшее время!")
-
-    elif "callback_query" in update:
-        callback = update["callback_query"]
-        chat_id = callback["message"]["chat"]["id"]
-        user_id = callback["from"]["id"]
-        data = callback["data"]
-        callback_id = callback["id"]
-
-        if data == "support":
-            send_message(chat_id, "📩 Напишите ваше сообщение. Я отправлю его в поддержку.")
-            answer_callback(callback_id, "")
-            return
-
-        if data == "show_tariffs":
-            send_message(chat_id, TARIFFS_TEXT, reply_markup=tariffs_keyboard())
-            answer_callback(callback_id, "")
-            return
-
-        if data == "trial":
-            conn = get_db()
-            cur = conn.execute("SELECT * FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
-            existing = cur.fetchone()
-            conn.close()
-            if existing:
-                send_message(chat_id, "❌ Вы уже активировали пробный период ранее.")
-                answer_callback(callback_id, "Триал уже был активирован")
-                return
-            create_subscription(user_id, "trial", 7)
-            send_message(chat_id, TRIAL_ACTIVATED)
-            answer_callback(callback_id, "Пробный период активирован")
-            return
-
-        if data == "create_company":
-            user_states[user_id] = 'creating_company'
-            send_message(chat_id, "🏢 Введите название вашей компании (например, «ООО Ромашка»).")
-            answer_callback(callback_id, "")
-            return
-
-        if data == "join_company":
-            user_states[user_id] = 'joining_company'
-            send_message(chat_id, "🔑 Введите код приглашения (8 символов, например, A1B2C3D4).")
-            answer_callback(callback_id, "")
-            return
-
-        if data.startswith("tariff_"):
-            plan_map = {
-                "tariff_pro": {"plan": "pro", "amount": 990, "days": 30, "label": "Pro"},
-                "tariff_premium": {"plan": "premium", "amount": 1990, "days": 30, "label": "Premium"},
-                "tariff_b2b": {"plan": "b2b", "amount": 4990, "days": 30, "label": "B2B"}
-            }
-            plan_data = plan_map.get(data)
-            if not plan_data:
-                answer_callback(callback_id, "Неизвестный тариф")
-                return
-            amount = plan_data["amount"]
-            plan = plan_data["plan"]
-            label = plan_data["label"]
-            payment_id, confirmation_url = create_yookassa_payment(user_id, amount, f"SaleFlow {label}", plan)
-            if not confirmation_url:
-                send_message(chat_id, "❌ Ошибка при создании платежа. Попробуйте позже.")
-                answer_callback(callback_id, "")
-                return
-            create_payment(user_id, payment_id, int(amount * 100), "RUB", plan)
-            send_message(chat_id, f"💳 <b>Оплата тарифа {label}</b>\n\nСумма: <b>{amount} ₽</b>\nПосле оплаты подписка активируется автоматически.", reply_markup=kb_payment(payment_id, confirmation_url))
-            answer_callback(callback_id, "Ссылка на оплату создана")
-            return
-
-        if data.startswith("check_payment_"):
-            payment_id = data.replace("check_payment_", "")
-            payment = get_payment(payment_id)
-            if not payment:
-                send_message(chat_id, "❌ Платёж не найден.")
-                answer_callback(callback_id, "")
-                return
-            if payment["status"] == "succeeded":
-                send_message(chat_id, "✅ Оплата подтверждена! Подписка активна.")
-                answer_callback(callback_id, "")
-                return
-            url = f"https://api.yookassa.ru/v3/payments/{payment_id}"
-            auth = (YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
-            response = requests.get(url, auth=auth)
-            if response.status_code == 200:
-                resp_data = response.json()
-                status = resp_data.get("status")
-                if status == "succeeded":
-                    update_payment_status(payment_id, "succeeded")
-                    payment = get_payment(payment_id)
-                    if payment:
-                        days = 30 if payment["plan_type"] in ("pro", "premium", "b2b") else 30
-                        create_subscription(payment["user_id"], payment["plan_type"], days)
-                        send_message(chat_id, "✅ Оплата подтверждена! Подписка активирована.")
-                    else:
-                        send_message(chat_id, "❌ Ошибка: данные платежа не найдены.")
-                    answer_callback(callback_id, "")
-                    return
-                else:
-                    send_message(chat_id, f"⏳ Статус платежа: <b>{status}</b>. Подождите ещё немного.")
-                    answer_callback(callback_id, "")
-                    return
-            else:
-                send_message(chat_id, "❌ Не удалось проверить статус платежа.")
-                answer_callback(callback_id, "")
-                return
-
-# ----- Уведомления (фоновая задача) -----
-def send_notifications_loop():
-    while True:
-        try:
-            expiring = get_subscriptions_expiring_soon(3)
-            for sub in expiring:
-                days_left = (datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S") - datetime.utcnow()).days
-                send_message(sub["user_id"], f"⏳ Напоминание: ваша подписка <b>{sub['plan_type'].upper()}</b> истекает через {days_left} дня. Продлите её!")
-            expired = get_expired_subscriptions()
-            for sub in expired:
-                conn = get_db()
-                conn.execute("UPDATE subscriptions SET is_active = 0 WHERE id = ?", (sub["id"],))
-                conn.commit()
-                conn.close()
-                send_message(sub["user_id"], "❌ Ваша подписка истекла. Чтобы продолжить, оформите новую.")
-        except Exception as e:
-            logger.error(f"Ошибка в уведомлениях: {e}")
-        time.sleep(86400)
-
-threading.Thread(target=send_notifications_loop, daemon=True).start()
-
-# ----- Основной цикл -----
-def get_updates(offset):
-    r = requests.get(f"{BOT_API}/getUpdates", params={"offset": offset, "timeout": 30})
-    if r.status_code == 200:
-        data = r.json()
-        if data["ok"] and data["result"]:
-            for update in data["result"]:
-                offset = update["update_id"] + 1
-                process_update(update)
-        else:
-            time.sleep(1)
-    return offset
-
-if __name__ == "__main__":
-    logger.info("✅ SaleFlow бот запущен")
-    while True:
-        try:
-            offset = get_updates(offset)
-        except Exception as e:
-            logger.error(f"Ошибка в основном цикле: {e}")
-            time.sleep(5)
