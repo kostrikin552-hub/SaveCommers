@@ -15,7 +15,7 @@ BASE_URL = os.getenv("BASE_URL", "https://your-bot.onrender.com")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://example.com")
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-me")  # важно!
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-me")
 
 BOT_API = f"https://api.telegram.org/bot{TOKEN}"
 offset = 0
@@ -23,14 +23,12 @@ DB_PATH = "data.db"
 db_lock = threading.Lock()
 user_states = {}
 
-# ----- Функция отправки ошибки админу -----
 def send_error_to_admin(text):
     try:
         send_msg(ADMIN_ID, f"🚨 Критическая ошибка:\n{text[:4000]}")
     except:
         pass
 
-# ----- Инициализация БД -----
 def init_db():
     with db_lock:
         conn = sqlite3.connect(DB_PATH)
@@ -42,11 +40,15 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS companies (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, owner_id INTEGER, invite_code TEXT UNIQUE)''')
         c.execute('''CREATE TABLE IF NOT EXISTS company_members (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER, user_id INTEGER, role TEXT DEFAULT 'member', UNIQUE(company_id, user_id))''')
         c.execute('''CREATE TABLE IF NOT EXISTS analysis_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, score INTEGER, markers_found INTEGER DEFAULT 0, positives TEXT, negatives TEXT)''')
+        # Добавляем колонку created_at в payments, если её нет
+        try:
+            c.execute("ALTER TABLE payments ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass  # колонка уже существует
         conn.commit()
         conn.close()
 init_db()
 
-# ----- Функции работы с БД (с retry при locked) -----
 def db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -104,7 +106,6 @@ def db_execute_lastrowid(q, p=()):
         finally:
             conn.close()
 
-# ----- Бизнес-логика -----
 def get_sub(user_id):
     return db_fetchone("SELECT * FROM subscriptions WHERE user_id = ? AND is_active = 1 AND end_date > datetime('now') ORDER BY end_date DESC", (user_id,))
 
@@ -123,14 +124,12 @@ def create_company(owner_id, name):
     db_execute("INSERT INTO company_members (company_id, user_id, role) VALUES (?, ?, 'admin')", (company_id, owner_id))
     return {"id": company_id, "invite_code": code}
 
-# ----- Подпись URL для WebApp -----
 def generate_signed_url(user_id, has_sub):
     timestamp = int(time.time())
     payload = f"{user_id}:{timestamp}:{has_sub}"
     signature = hmac.new(SECRET_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{WEBAPP_URL}?user_id={user_id}&ts={timestamp}&sub={has_sub}&sig={signature}"
 
-# ----- Отправка сообщений -----
 def send_msg(chat_id, text, kb=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     if kb: payload["reply_markup"] = json.dumps(kb)
@@ -142,7 +141,6 @@ def send_msg(chat_id, text, kb=None):
 def answer_cb(cb_id, text=""):
     requests.post(f"{BOT_API}/answerCallbackQuery", json={"callback_query_id": cb_id, "text": text})
 
-# ----- Клавиатуры -----
 def main_menu():
     return {"keyboard": [[{"text": "🚀 Новый анализ"}, {"text": "📊 Мой прогресс"}], [{"text": "💎 Тарифы"}, {"text": "👥 B2B"}], [{"text": "❓ Поддержка"}]], "resize_keyboard": True}
 
@@ -154,12 +152,16 @@ def tariffs_kb():
         [{"text": "🎁 Активировать 3 дня бесплатно", "callback_data": "trial"}]
     ]}
 
-# ----- HTTP-сервер (вебхук) -----
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"SaleFlow bot is running")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
     def do_POST(self):
         if self.path == "/webhook/yookassa":
             data = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))))
@@ -176,7 +178,6 @@ class Handler(BaseHTTPRequestHandler):
 
 threading.Thread(target=lambda: HTTPServer(('', int(os.getenv("PORT", 10000))), Handler).serve_forever(), daemon=True).start()
 
-# ----- Проверка зависших платежей (фоновая задача) -----
 def check_pending_payments():
     while True:
         try:
@@ -197,11 +198,10 @@ def check_pending_payments():
         except Exception as e:
             logger.error(f"Payment checker error: {e}")
             send_error_to_admin(f"Ошибка проверки платежей: {e}")
-        time.sleep(3600)  # раз в час
+        time.sleep(3600)
 
 threading.Thread(target=check_pending_payments, daemon=True).start()
 
-# ----- Обработка обновлений -----
 def process_update(update):
     try:
         if "message" in update:
@@ -374,17 +374,7 @@ def process_update(update):
         error_text = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_text)
         send_error_to_admin(error_text)
-
-# ----- Основной цикл и фоновые задачи -----
-def get_updates(offset):
-    r = requests.get(f"{BOT_API}/getUpdates", params={"offset": offset, "timeout": 30})
-    if r.status_code == 200 and r.json()["ok"]:
-        for u in r.json()["result"]:
-            offset = u["update_id"] + 1
-            process_update(u)
-    return offset
-
-if __name__ == "__main__":
+        if __name__ == "__main__":
     logger.info("SaleFlow бот запущен")
     def notif_loop():
         while True:
@@ -409,3 +399,12 @@ if __name__ == "__main__":
             logger.error(f"Основной цикл: {e}")
             send_error_to_admin(f"Ошибка основного цикла: {e}")
             time.sleep(5)
+
+def get_updates(offset):
+    r = requests.get(f"{BOT_API}/getUpdates", params={"offset": offset, "timeout": 30})
+    if r.status_code == 200 and r.json()["ok"]:
+        for u in r.json()["result"]:
+            offset = u["update_id"] + 1
+            process_update(u)
+    return offset
+    
