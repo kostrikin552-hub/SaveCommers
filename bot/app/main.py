@@ -108,9 +108,6 @@ def db_execute_lastrowid(q, p=()):
 def get_sub(user_id):
     return db_fetchone("SELECT * FROM subscriptions WHERE user_id = ? AND is_active = 1 AND end_date > datetime('now') ORDER BY end_date DESC", (user_id,))
 
-def get_active_subscription(user_id):
-    return get_sub(user_id)
-
 def create_sub(user_id, plan, days):
     db_execute("UPDATE subscriptions SET is_active = 0 WHERE user_id = ?", (user_id,))
     db_execute("INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (?, ?, 'active', datetime('now'), datetime('now', '+? days'), 1)", (user_id, plan, days))
@@ -122,8 +119,7 @@ def create_company(owner_id, name):
     if len(name.strip()) < 2: return None
     code = str(uuid.uuid4())[:8].upper()
     company_id = db_execute_lastrowid("INSERT INTO companies (name, owner_id, invite_code) VALUES (?, ?, ?)", (name.strip(), owner_id, code))
-    if company_id is None:
-        return None
+    if company_id is None: return None
     db_execute("INSERT INTO company_members (company_id, user_id, role) VALUES (?, ?, 'admin')", (company_id, owner_id))
     return {"id": company_id, "invite_code": code}
 
@@ -173,7 +169,6 @@ class Handler(BaseHTTPRequestHandler):
                 user_id = int(obj.get("metadata", {}).get("user_id", 0))
                 plan_type = obj.get("metadata", {}).get("plan_type", "pro")
                 if user_id:
-                    # Исправлено: для всех планов 30 дней (можно настроить под бизнес-логику)
                     days = 30
                     create_sub(user_id, plan_type, days)
                     db_execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (obj.get("id"),))
@@ -197,7 +192,6 @@ def check_pending_payments():
                     status = data.get("status")
                     if status == "succeeded":
                         db_execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (payment_id,))
-                        # Исправлено: все планы на 30 дней (можно настроить)
                         days = 30
                         create_sub(payment["user_id"], payment["plan_type"], days)
                     elif status in ("canceled", "expired"):
@@ -326,7 +320,6 @@ def process_update(update):
                         db_execute("UPDATE subscriptions SET is_active = 0 WHERE user_id = ?", (target,))
                         send_msg(chat_id, f"✅ Деактивировано для {target}")
                 else:
-                    # Игнорируем неизвестные команды (не отправляем в поддержку)
                     pass
 
             else:
@@ -342,10 +335,9 @@ def process_update(update):
                 send_msg(chat_id, "📩 Напиши сообщение, я перешлю")
                 answer_cb(cb["id"], "")
             elif data == "trial":
-                # Проверяем, есть ли активная подписка (любая)
                 active = get_sub(user_id)
                 if active:
-                    send_msg(chat_id, "❌ У вас уже есть активная подписка (пробный период не нужен)")
+                    send_msg(chat_id, "❌ У вас уже есть активная подписка")
                 else:
                     create_sub(user_id, "trial", 3)
                     send_msg(chat_id, "✅ 3 дня бесплатно активированы!")
@@ -400,7 +392,7 @@ def get_updates(offset):
                 for sub in expiring:
                     days = (datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S") - datetime.now(timezone.utc)).days
                     send_msg(sub["user_id"], f"⏳ Подписка истекает через {days} дн.")
-                    time.sleep(0.5)  # пауза между отправками, чтобы не превысить лимиты
+                    time.sleep(0.5)
                 expired = db_fetchall("SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now')")
                 for sub in expired:
                     db_execute("UPDATE subscriptions SET is_active = 0 WHERE id = ?", (sub["id"],))
