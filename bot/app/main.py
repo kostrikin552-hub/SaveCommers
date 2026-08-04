@@ -123,7 +123,7 @@ def create_trial_subscription(user_id):
     existing = db_fetchone("SELECT * FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
     if existing:
         return False
-    db_execute("INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (?, 'trial', 'active', datetime('now'), datetime('now', '+7 days'), 1)", (user_id,))
+    db_execute("INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (?, 'trial', 'active', datetime('now'), datetime('now', '+3 days'), 1)", (user_id,))
     return True
 
 def get_subscriptions_expiring_soon(days=3):
@@ -282,7 +282,7 @@ def tariffs_keyboard():
             [{"text": "🔓 Pro — 990 ₽/мес", "callback_data": "tariff_pro"}],
             [{"text": "👑 Premium — 1 990 ₽/мес", "callback_data": "tariff_premium"}],
             [{"text": "🏢 B2B — 4 990 ₽/мес (до 10 чел)", "callback_data": "tariff_b2b"}],
-            [{"text": "🎁 Активировать 7 дней бесплатно", "callback_data": "trial"}]
+            [{"text": "🎁 Активировать 3 дня бесплатно", "callback_data": "trial"}]
         ]
     }
 
@@ -315,7 +315,12 @@ WELCOME = """
 Я <b>SaleFlow</b> — твой личный коуч по продажам.
 За 60 секунд покажу, где ты теряешь клиента и как это исправить.
 
-🎁 <b>У тебя 7 дней бесплатного доступа!</b>
+📌 <b>Как вставить переписку для точного анализа:</b>
+• Используй <b>«Клиент:»</b> и <b>«Вы:»</b> перед каждой репликой — это даст максимальную точность.
+• Или просто чередуй строки: первая — клиент, вторая — ты.
+• Если клиент написал несколько сообщений подряд — объедини их в одно или используй метки.
+
+🎁 <b>У тебя 3 дня бесплатного доступа!</b>
 Нажми «Новый анализ» и вставь переписку — я дам конкретные советы.
 
 После пробного периода — 990 ₽/мес.
@@ -344,7 +349,7 @@ TARIFFS_TEXT = """
 ✅ Рекомендации для обучения
 ✅ Общая статистика
 
-🎁 Нажми «Активировать 7 дней бесплатно», чтобы попробовать Pro.
+🎁 Нажми «Активировать 3 дня бесплатно», чтобы попробовать Pro.
 """
 
 SUPPORT_TEXT = """
@@ -365,7 +370,7 @@ B2B_TEXT = """
 """
 
 TRIAL_ACTIVATED = """
-✅ <b>Пробный период на 7 дней активирован!</b>
+✅ <b>Пробный период на 3 дня активирован!</b>
 
 Теперь у тебя безлимитный анализ, история и PDF-отчёты.
 Начни анализировать свои переписки прямо сейчас!
@@ -378,6 +383,7 @@ SUB_EXPIRED = """
 
 💰 Нажмите «💎 Тарифы», чтобы выбрать подходящий тариф.
 """
+
 # ----- Обработка обновлений -----
 def process_update(update):
     if "message" in update:
@@ -478,233 +484,4 @@ def process_update(update):
 
         if text.startswith("/addmember"):
             if user_id != ADMIN_ID:
-                send_message(chat_id, "⛔ У вас нет прав для этой команды.")
-                return
-            parts = text.split()
-            if len(parts) < 3:
-                send_message(chat_id, "❌ Использование: /addmember USER_ID COMPANY_ID [ROLE]\nПример: /addmember 123456789 1 member")
-                return
-            target_user_id = int(parts[1])
-            company_id = int(parts[2])
-            role = parts[3] if len(parts) > 3 else "member"
-            existing = db_fetchone("SELECT * FROM company_members WHERE user_id = ? AND company_id = ?", (target_user_id, company_id))
-            if existing:
-                send_message(chat_id, f"⚠️ Пользователь {target_user_id} уже состоит в компании {company_id}.")
-            else:
-                db_execute("INSERT INTO company_members (company_id, user_id, role) VALUES (?, ?, ?)", (company_id, target_user_id, role))
-                send_message(chat_id, f"✅ Пользователь {target_user_id} добавлен в компанию {company_id} с ролью {role}.")
-            return
-
-        if text.startswith("/listcompanies"):
-            if user_id != ADMIN_ID:
-                send_message(chat_id, "⛔ У вас нет прав для этой команды.")
-                return
-            companies = db_fetchall("SELECT * FROM companies")
-            if not companies:
-                send_message(chat_id, "📋 Нет компаний.")
-                return
-            ans = "📋 Список компаний:\n"
-            for c in companies:
-                members = get_company_members(c["id"])
-                ans += f"• {c['name']} (ID: {c['id']}, код: {c['invite_code']}, участников: {len(members)})\n"
-            send_message(chat_id, ans)
-            return
-
-        # ----- Обычные команды -----
-        if text.startswith("/start"):
-            sub = get_active_subscription(user_id)
-            if not sub:
-                create_trial_subscription(user_id)
-            send_message(chat_id, WELCOME.format(first_name=first_name), reply_markup=main_menu())
-
-        elif text == "🚀 Новый анализ":
-            sub = get_active_subscription(user_id)
-            if sub:
-                send_message(chat_id, "🔓 У вас активная подписка. Открываю анализатор...", reply_markup=webapp_button())
-                return
-            else:
-                send_message(chat_id, SUB_EXPIRED, reply_markup=kb_show_tariffs())
-
-        elif text == "📊 Мой прогресс":
-            sub = get_active_subscription(user_id)
-            history = get_analysis_history(user_id)
-            if sub:
-                ans = f"📈 <b>Твой прогресс</b>\n\nТариф: <b>{sub['plan_type'].upper()}</b>\nДействует до: {sub['end_date']}\n\n"
-            else:
-                ans = "📈 <b>Твой прогресс</b>\n\nУ тебя нет активной подписки.\n"
-            if history:
-                ans += "Последние анализы:\n"
-                for h in history:
-                    ans += f"• {h['created_at'][:10]}: {h['score']}/100, найдено {h['markers_found']} маркеров\n"
-            else:
-                ans += "Пока нет истории анализов. Сделай первый анализ!"
-            send_message(chat_id, ans, reply_markup=main_menu())
-
-        elif text == "💎 Тарифы":
-            send_message(chat_id, TARIFFS_TEXT, reply_markup=tariffs_keyboard())
-
-        elif text == "👥 B2B":
-            company = get_company_for_user(user_id)
-            if company:
-                members = get_company_members(company["id"])
-                ans = f"🏢 <b>{company['name']}</b>\n\nКод приглашения: <code>{company['invite_code']}</code>\nСотрудников: {len(members)}\n\n<b>Сотрудники:</b>\n"
-                for m in members:
-                    ans += f"• {m['first_name']} @{m['username'] or 'нет'}\n"
-                send_message(chat_id, ans, reply_markup=main_menu())
-            else:
-                send_message(chat_id, B2B_TEXT, reply_markup=kb_b2b_actions())
-
-        elif text == "❓ Поддержка":
-            send_message(chat_id, SUPPORT_TEXT, reply_markup=support_keyboard())
-
-        else:
-            user = msg["from"]
-            forwarded_text = (
-                f"📩 <b>Сообщение от пользователя</b>\n"
-                f"ID: {user['id']}\n"
-                f"Имя: {user.get('first_name', '')} {user.get('last_name', '')}\n"
-                f"Username: @{user.get('username', 'нет')}\n\n"
-                f"<b>Текст:</b>\n{text}"
-            )
-            send_message(ADMIN_ID, forwarded_text)
-            send_message(chat_id, "✅ Сообщение отправлено в поддержку. Мы ответим в ближайшее время!")
-
-    elif "callback_query" in update:
-        callback = update["callback_query"]
-        chat_id = callback["message"]["chat"]["id"]
-        user_id = callback["from"]["id"]
-        data = callback["data"]
-        callback_id = callback["id"]
-
-        if data == "support":
-            send_message(chat_id, "📩 Напишите ваше сообщение. Я отправлю его в поддержку.")
-            answer_callback(callback_id, "")
-            return
-
-        if data == "show_tariffs":
-            send_message(chat_id, TARIFFS_TEXT, reply_markup=tariffs_keyboard())
-            answer_callback(callback_id, "")
-            return
-
-        if data == "trial":
-            existing = db_fetchone("SELECT * FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
-            if existing:
-                send_message(chat_id, "❌ Вы уже активировали пробный период ранее.")
-                answer_callback(callback_id, "Триал уже был активирован")
-                return
-            create_subscription(user_id, "trial", 7)
-            send_message(chat_id, TRIAL_ACTIVATED)
-            answer_callback(callback_id, "Пробный период активирован")
-            return
-
-        if data == "create_company":
-            user_states[user_id] = 'creating_company'
-            send_message(chat_id, "🏢 Введите название вашей компании (например, «ООО Ромашка»).")
-            answer_callback(callback_id, "")
-            return
-
-        if data == "join_company":
-            user_states[user_id] = 'joining_company'
-            send_message(chat_id, "🔑 Введите код приглашения (8 символов, например, A1B2C3D4).")
-            answer_callback(callback_id, "")
-            return
-
-        if data.startswith("tariff_"):
-            plan_map = {
-                "tariff_pro": {"plan": "pro", "amount": 990, "days": 30, "label": "Pro"},
-                "tariff_premium": {"plan": "premium", "amount": 1990, "days": 30, "label": "Premium"},
-                "tariff_b2b": {"plan": "b2b", "amount": 4990, "days": 30, "label": "B2B"}
-            }
-            plan_data = plan_map.get(data)
-            if not plan_data:
-                answer_callback(callback_id, "Неизвестный тариф")
-                return
-            amount = plan_data["amount"]
-            plan = plan_data["plan"]
-            label = plan_data["label"]
-            payment_id, confirmation_url = create_yookassa_payment(user_id, amount, f"SaleFlow {label}", plan)
-            if not confirmation_url:
-                send_message(chat_id, "❌ Ошибка при создании платежа. Попробуйте позже.")
-                answer_callback(callback_id, "")
-                return
-            create_payment(user_id, payment_id, int(amount * 100), "RUB", plan)
-            send_message(chat_id, f"💳 <b>Оплата тарифа {label}</b>\n\nСумма: <b>{amount} ₽</b>\nПосле оплаты подписка активируется автоматически.", reply_markup=kb_payment(payment_id, confirmation_url))
-            answer_callback(callback_id, "Ссылка на оплату создана")
-            return
-
-        if data.startswith("check_payment_"):
-            payment_id = data.replace("check_payment_", "")
-            payment = get_payment(payment_id)
-            if not payment:
-                send_message(chat_id, "❌ Платёж не найден.")
-                answer_callback(callback_id, "")
-                return
-            if payment["status"] == "succeeded":
-                send_message(chat_id, "✅ Оплата подтверждена! Подписка активна.")
-                answer_callback(callback_id, "")
-                return
-            url = f"https://api.yookassa.ru/v3/payments/{payment_id}"
-            auth = (YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
-            response = requests.get(url, auth=auth)
-            if response.status_code == 200:
-                resp_data = response.json()
-                status = resp_data.get("status")
-                if status == "succeeded":
-                    update_payment_status(payment_id, "succeeded")
-                    payment = get_payment(payment_id)
-                    if payment:
-                        days = 30 if payment["plan_type"] in ("pro", "premium", "b2b") else 30
-                        create_subscription(payment["user_id"], payment["plan_type"], days)
-                        send_message(chat_id, "✅ Оплата подтверждена! Подписка активирована.")
-                    else:
-                        send_message(chat_id, "❌ Ошибка: данные платежа не найдены.")
-                    answer_callback(callback_id, "")
-                    return
-                else:
-                    send_message(chat_id, f"⏳ Статус платежа: <b>{status}</b>. Подождите ещё немного.")
-                    answer_callback(callback_id, "")
-                    return
-            else:
-                send_message(chat_id, "❌ Не удалось проверить статус платежа.")
-                answer_callback(callback_id, "")
-                return
-
-# ----- Уведомления (фоновая задача) -----
-def send_notifications_loop():
-    while True:
-        try:
-            expiring = get_subscriptions_expiring_soon(3)
-            for sub in expiring:
-                days_left = (datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S") - datetime.utcnow()).days
-                send_message(sub["user_id"], f"⏳ Напоминание: ваша подписка <b>{sub['plan_type'].upper()}</b> истекает через {days_left} дня. Продлите её!")
-            expired = get_expired_subscriptions()
-            for sub in expired:
-                db_execute("UPDATE subscriptions SET is_active = 0 WHERE id = ?", (sub["id"],))
-                send_message(sub["user_id"], "❌ Ваша подписка истекла. Чтобы продолжить, оформите новую.")
-        except Exception as e:
-            logger.error(f"Ошибка в уведомлениях: {e}")
-        time.sleep(86400)
-
-threading.Thread(target=send_notifications_loop, daemon=True).start()
-
-# ----- Основной цикл -----
-def get_updates(offset):
-    r = requests.get(f"{BOT_API}/getUpdates", params={"offset": offset, "timeout": 30})
-    if r.status_code == 200:
-        data = r.json()
-        if data["ok"] and data["result"]:
-            for update in data["result"]:
-                offset = update["update_id"] + 1
-                process_update(update)
-        else:
-            time.sleep(1)
-    return offset
-
-if __name__ == "__main__":
-    logger.info("✅ SaleFlow бот запущен")
-    while True:
-        try:
-            offset = get_updates(offset)
-        except Exception as e:
-            logger.error(f"Ошибка в основном цикле: {e}")
-            time.sleep(5)
+                send_message(chat_id, "⛔ У вас нет пр
