@@ -383,7 +383,7 @@ def get_updates(offset):
             offset = u["update_id"] + 1
             process_update(u)
     return offset
-        if __name__ == "__main__":
+if __name__ == "__main__":
     logger.info("SaleFlow бот запущен")
     def notif_loop():
         while True:
