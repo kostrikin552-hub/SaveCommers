@@ -399,4 +399,17 @@ if __name__ == "__main__":
                     send_msg(sub["user_id"], "❌ Подписка истекла")
             except Exception as e:
                 logger.error(f"Уведомления: {e}")
-                se
+                            send_error_to_admin(f"Ошибка уведомлений: {e}")
+        time.sleep(86400)  # раз в сутки
+
+# Запускаем поток уведомлений
+threading.Thread(target=notif_loop, daemon=True).start()
+
+# Основной цикл
+while True:
+    try:
+        offset = get_updates(offset)
+    except Exception as e:
+        logger.error(f"Основной цикл: {e}")
+        send_error_to_admin(f"Ошибка основного цикла: {e}")
+        time.sleep(5)
