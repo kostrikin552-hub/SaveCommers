@@ -42,15 +42,12 @@ button{background:#1a6b5a;color:#fff;border:none;padding:14px;width:100%;border-
 <div id="step-result" style="display:none;"></div>
 </div>
 <script>
-// ----- Проверка подписи (HMAC) -----
 const urlParams = new URLSearchParams(window.location.search);
 const userId = urlParams.get('user_id');
 const timestamp = urlParams.get('ts');
 const hasSubParam = urlParams.get('sub');
 const signature = urlParams.get('sig');
-
-// Секретный ключ должен совпадать с бекендом (можно задать здесь или получить с сервера)
-const SECRET_KEY = 'ваш-секретный-ключ'; // должен быть тот же, что в .env
+const SECRET_KEY = 'my_super_secret_key_1234'; // изменено на ваш ключ
 
 async function verifySignature() {
     if (!userId || !timestamp || !hasSubParam || !signature) {
@@ -76,8 +73,8 @@ async function verifySignature() {
     }
 }
 
-// ----- Инициализация -----
 const hasSub = hasSubParam === '1';
+let verified = false;
 
 document.getElementById('example-btn').addEventListener('click', function() {
 document.getElementById('dialog-input').value = 
@@ -92,8 +89,6 @@ document.getElementById('dialog-input').value =
 Клиент: Да, отлично.`;
 });
 
-// Ждём проверки подписи перед активацией кнопки анализа
-let verified = false;
 verifySignature().then(ok => {
     if (!ok) {
         document.getElementById('analyze-btn').disabled = true;
@@ -101,7 +96,6 @@ verifySignature().then(ok => {
         return;
     }
     verified = true;
-    // Активируем кнопку
     document.getElementById('analyze-btn').disabled = false;
     document.getElementById('analyze-btn').textContent = '🔍 Анализировать';
 });
@@ -118,7 +112,6 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
     function parseDialog(t) {
         const lines = t.split('\n').filter(l => l.trim());
         if (!lines.length) return [];
-        // Приводим к нижнему регистру для регистронезависимости
         const hasLabels = lines.some(l => /^(вы|клиент):/i.test(l.trim().toLowerCase()));
         if (hasLabels) {
             let msgs = [], sender = null, cur = '';
@@ -126,7 +119,7 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
                 const m = l.match(/^(.+?):\s*(.*)/);
                 if (m) {
                     if (sender && cur) msgs.push({sender: sender.trim(), text: cur.trim()});
-                    sender = m[1].trim().toLowerCase(); // нормализуем регистр
+                    sender = m[1].trim().toLowerCase();
                     cur = m[2].trim();
                 } else {
                     cur += ' ' + l.trim();
@@ -157,7 +150,6 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
     const lastManager = managerMsgs[managerMsgs.length-1]?.text || '';
     const lastClient = clientMsgs[clientMsgs.length-1]?.text || '';
 
-    // ----- 30 правил (можно вынести в JSON, но пока оставим) -----
     const rules = [
         {id:'greeting', name:'Приветствие', w:3, ch:()=>/здравствуй|добрый день|привет|доброе утро/.test(full), neg:'✖ Нет приветствия', pos:'✔ Поприветствовали клиента', sug:'Начинайте с приветствия.'},
         {id:'empathy1', name:'Эмпатия (понимание)', w:4, ch:()=>/понимаю|слышу|согласен|разделяю/.test(full), neg:'✖ Нет фраз понимания', pos:'✔ Проявили понимание', sug:'Используйте "понимаю", "слышу".'},
@@ -265,7 +257,6 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
     });
 });
 
-// ----- Копирование с fallback -----
 function copyText(text) {
     if (navigator.clipboard) {
         navigator.clipboard.writeText(text)
