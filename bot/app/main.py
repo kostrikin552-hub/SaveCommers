@@ -1,6 +1,7 @@
 import os, time, json, uuid, sqlite3, threading, logging, hmac, hashlib, traceback
 from datetime import datetime, timedelta, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from collections import Counter
 import requests
 from dotenv import load_dotenv
 
@@ -39,7 +40,8 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, payment_id TEXT UNIQUE, amount INTEGER, currency TEXT, status TEXT, plan_type TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         c.execute('''CREATE TABLE IF NOT EXISTS companies (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, owner_id INTEGER, invite_code TEXT UNIQUE)''')
         c.execute('''CREATE TABLE IF NOT EXISTS company_members (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER, user_id INTEGER, role TEXT DEFAULT 'member', UNIQUE(company_id, user_id))''')
-        c.execute('''CREATE TABLE IF NOT EXISTS analysis_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, score INTEGER, markers_found INTEGER DEFAULT 0, positives TEXT, negatives TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS analysis_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, score INTEGER, markers_found INTEGER DEFAULT 0, positives TEXT, negatives TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        # Реферальная таблица для пользователей (бонусные дни)
         c.execute('''CREATE TABLE IF NOT EXISTS referrals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             inviter_id INTEGER,
@@ -48,6 +50,7 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             reward_given INTEGER DEFAULT 0
         )''')
+        # Партнёрская программа (денежные выплаты)
         c.execute('''CREATE TABLE IF NOT EXISTS partners (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
@@ -65,8 +68,21 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             partner_id INTEGER,
             user_id INTEGER UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            paid INTEGER DEFAULT 0
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        # Баланс обычных пользователей (денежный бонус от рефералов)
+        c.execute('''CREATE TABLE IF NOT EXISTS user_balances (
+            user_id INTEGER PRIMARY KEY,
+            balance INTEGER DEFAULT 0
+        )''')
+        # История бонусов для партнёров (деньги) — для каждого платежа
+        c.execute('''CREATE TABLE IF NOT EXISTS partner_bonus_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            partner_id INTEGER,
+            user_id INTEGER,
+            payment_id TEXT,
+            amount_cents INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
         try:
             c.execute("ALTER TABLE users ADD COLUMN referrer_id INTEGER DEFAULT NULL")
@@ -173,7 +189,8 @@ def main_menu():
     return {"keyboard": [
         [{"text": "🚀 Новый анализ"}, {"text": "📊 Мой прогресс"}],
         [{"text": "💎 Тарифы"}, {"text": "👥 B2B"}],
-        [{"text": "👥 Пригласить друга"}, {"text": "❓ Поддержка"}]
+        [{"text": "👥 Пригласить друга"}, {"text": "💰 Баланс"}],
+        [{"text": "📈 Статистика"}, {"text": "❓ Поддержка"}]
     ], "resize_keyboard": True}
 
 def tariffs_kb():
@@ -184,21 +201,27 @@ def tariffs_kb():
         [{"text": "🎁 Активировать 3 дня бесплатно", "callback_data": "trial"}]
     ]}
 
+# ---- РЕФЕРАЛЬНЫЕ ФУНКЦИИ (пользовательская: +6 дней) ----
+
 def apply_referral_bonus(user_id):
-    """Начисление бонусных дней пользователю, который пригласил данного пользователя"""
+    """
+    Начисляет +6 дней рефереру при оплате приглашённого пользователя.
+    """
     inviter = db_fetchone("SELECT referrer_id FROM users WHERE user_id = ?", (user_id,))
     if not inviter or not inviter["referrer_id"]:
         return
     inviter_id = inviter["referrer_id"]
-    bonus_days = 6  # 20% от 30 дней
+    bonus_days = 6
     current_sub = get_sub(inviter_id)
     if current_sub:
         db_execute("UPDATE subscriptions SET end_date = datetime(end_date, '+? days') WHERE user_id = ? AND is_active = 1", (bonus_days, inviter_id))
-        send_msg(inviter_id, f"🎉 Ваш друг оплатил подписку! Вы получили +{bonus_days} дней (20% от его тарифа).")
+        send_msg(inviter_id, f"🎉 Ваш друг оплатил подписку! Вы получили +{bonus_days} дней (20% от 30 дней).")
     else:
         create_sub(inviter_id, "bonus", bonus_days)
         send_msg(inviter_id, f"🎉 Ваш друг оплатил подписку! Вам активировано {bonus_days} бесплатных дней.")
     logger.info(f"Реферальный бонус: {inviter_id} получил {bonus_days} дней за пользователя {user_id}")
+
+# ---- ПАРТНЁРСКИЕ ФУНКЦИИ (денежный процент с каждой оплаты) ----
 
 def generate_partner_code(partner_id):
     code = str(uuid.uuid4())[:8].upper()
@@ -211,25 +234,45 @@ def get_partner_by_code(code):
         return db_fetchone("SELECT * FROM partners WHERE id = ?", (link["partner_id"],))
     return None
 
-def apply_partner_bonus(user_id, amount_cents):
-    lead = db_fetchone("SELECT partner_id FROM partner_leads WHERE user_id = ? AND paid = 0", (user_id,))
+def get_user_balance(user_id):
+    row = db_fetchone("SELECT balance FROM user_balances WHERE user_id = ?", (user_id,))
+    return row["balance"] if row else 0
+
+def apply_partner_bonus(user_id, payment_id, amount_cents):
+    """
+    Начисляет 20% от суммы платежа на баланс партнёра (канала/блогера).
+    Вызывается при каждом успешном платеже user_id.
+    """
+    lead = db_fetchone("SELECT partner_id FROM partner_leads WHERE user_id = ?", (user_id,))
     if not lead:
         return
     partner_id = lead["partner_id"]
-    bonus = int(amount_cents * 0.2)  # 20%
-    db_execute("UPDATE partners SET balance = balance + ? WHERE id = ?", (bonus, partner_id))
-    db_execute("UPDATE partner_leads SET paid = 1 WHERE user_id = ?", (user_id,))
-    partner = db_fetchone("SELECT name, contact FROM partners WHERE id = ?", (partner_id,))
-    send_msg(ADMIN_ID, f"💰 Партнёр {partner['name']} получил бонус {bonus/100:.2f}₽ за пользователя {user_id}")
-    logger.info(f"Партнёр {partner_id} получил {bonus} копеек за пользователя {user_id}")
+    # Проверяем, не начислен ли уже бонус за этот платёж
+    existing = db_fetchone("SELECT id FROM partner_bonus_history WHERE payment_id = ? AND partner_id = ?", (payment_id, partner_id))
+    if existing:
+        return
+    bonus_percent = 20
+    bonus_cents = int(amount_cents * bonus_percent / 100)
+    if bonus_cents == 0:
+        return
+    db_execute("UPDATE partners SET balance = balance + ? WHERE id = ?", (bonus_cents, partner_id))
+    db_execute("INSERT INTO partner_bonus_history (partner_id, user_id, payment_id, amount_cents) VALUES (?, ?, ?, ?)",
+               (partner_id, user_id, payment_id, bonus_cents))
+    partner = db_fetchone("SELECT name FROM partners WHERE id = ?", (partner_id,))
+    send_msg(ADMIN_ID, f"💰 Партнёр {partner['name']} получил {bonus_cents/100:.2f}₽ (20%) за платёж {payment_id} от пользователя {user_id}")
+    logger.info(f"Партнёр {partner_id} получил {bonus_cents/100:.2f}₽ за платёж {payment_id}")
 
 # ---- HTTP-СЕРВЕР ----
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"SaleFlow bot is running")
+        if self.path == "/":
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"SaleFlow bot is running")
+        else:
+            self.send_response(404)
+            self.end_headers()
 
     def do_HEAD(self):
         self.send_response(200)
@@ -242,17 +285,38 @@ class Handler(BaseHTTPRequestHandler):
                 obj = data.get("object", {})
                 user_id = int(obj.get("metadata", {}).get("user_id", 0))
                 plan_type = obj.get("metadata", {}).get("plan_type", "pro")
+                payment_id = obj.get("id")
                 amount_cents = int(float(obj.get("amount", {}).get("value", 0)) * 100)
                 if user_id:
                     days = 30
                     create_sub(user_id, plan_type, days)
                     apply_referral_bonus(user_id)
-                    apply_partner_bonus(user_id, amount_cents)
-                    db_execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (obj.get("id"),))
+                    apply_partner_bonus(user_id, payment_id, amount_cents)
+                    db_execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (payment_id,))
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(b"OK")
-                # Запускаем HTTP-сервер в фоновом потоке
+        elif self.path == "/api/save_analysis":
+            try:
+                data = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))))
+                user_id = data.get("user_id")
+                score = data.get("score")
+                positives = data.get("positives", "")
+                negatives = data.get("negatives", "")
+                if user_id and score is not None:
+                    db_execute("INSERT INTO analysis_history (user_id, score, positives, negatives) VALUES (?, ?, ?, ?)",
+                               (user_id, score, positives, negatives))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"OK")
+            except Exception as e:
+                logger.error(f"Ошибка сохранения анализа: {e}")
+                self.send_response(500)
+                self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+            # ============ ЗАПУСК HTTP-СЕРВЕРА ============
 threading.Thread(target=lambda: HTTPServer(('', int(os.getenv("PORT", 10000))), Handler).serve_forever(), daemon=True).start()
 
 def check_pending_payments():
@@ -272,7 +336,7 @@ def check_pending_payments():
                         days = 30
                         create_sub(payment["user_id"], payment["plan_type"], days)
                         apply_referral_bonus(payment["user_id"])
-                        apply_partner_bonus(payment["user_id"], payment["amount"])
+                        apply_partner_bonus(payment["user_id"], payment_id, payment["amount"])
                     elif status in ("canceled", "expired"):
                         db_execute("UPDATE payments SET status = 'failed' WHERE payment_id = ?", (payment_id,))
         except Exception as e:
@@ -281,6 +345,35 @@ def check_pending_payments():
         time.sleep(3600)
 
 threading.Thread(target=check_pending_payments, daemon=True).start()
+
+def weekly_report_loop():
+    while True:
+        try:
+            # Ждём до следующего понедельника 09:00 UTC
+            now = datetime.now(timezone.utc)
+            days_until_monday = (6 - now.weekday()) % 7  # 0 = понедельник
+            if days_until_monday == 0 and now.hour >= 9:
+                days_until_monday = 7
+            next_monday = now + timedelta(days=days_until_monday)
+            next_monday = next_monday.replace(hour=9, minute=0, second=0, microsecond=0)
+            sleep_seconds = (next_monday - now).total_seconds()
+            time.sleep(sleep_seconds)
+            # Отправляем отчёты всем, у кого были анализы за последнюю неделю
+            users = db_fetchall("SELECT DISTINCT user_id FROM analysis_history WHERE created_at > datetime('now', '-7 days')")
+            for u in users:
+                user_id = u["user_id"]
+                history = db_fetchall("SELECT * FROM analysis_history WHERE user_id = ? AND created_at > datetime('now', '-7 days')", (user_id,))
+                if not history:
+                    continue
+                total = len(history)
+                avg_score = sum(h["score"] for h in history) / total
+                send_msg(user_id, f"📊 Ваш еженедельный отчёт:\n• Анализов за неделю: {total}\n• Средний балл: {avg_score:.1f}\n• Продолжайте улучшать свои навыки! 🚀")
+            time.sleep(60)
+        except Exception as e:
+            logger.error(f"Ошибка в weekly_report_loop: {e}")
+            time.sleep(86400)
+
+threading.Thread(target=weekly_report_loop, daemon=True).start()
 
 def process_update(update):
     try:
@@ -327,6 +420,7 @@ def process_update(update):
                     return
 
             if text.startswith("/start"):
+                # Реферальные ссылки (пользовательская ref_ и партнёрская part_)
                 ref_id = None
                 partner_code = None
                 if " " in text:
@@ -359,6 +453,7 @@ def process_update(update):
                     else:
                         send_msg(chat_id, "❌ Неверный партнёрский код")
 
+                # Приветствие и триал
                 sub = get_sub(user_id)
                 if not sub:
                     create_sub(user_id, "trial", 3)
@@ -393,7 +488,7 @@ def process_update(update):
                 if history:
                     ans += "Последние анализы:\n"
                     for h in history:
-                        ans += f"• {h['created_at'][:10]}: {h['score']}/100, {h['markers_found']} маркеров\n"
+                        ans += f"• {h['created_at'][:10]}: {h['score']}/100\n"
                 else:
                     ans += "Нет истории"
                 send_msg(chat_id, ans, main_menu())
@@ -421,6 +516,35 @@ def process_update(update):
                          f"• Ты получаешь <b>+6 дней</b> (20% от его тарифа)\n\n"
                          f"📣 Приведи 5 друзей → получи 30 дней бесплатно!",
                          main_menu())
+
+            elif text == "💰 Баланс" or text == "/balance":
+                balance = get_user_balance(user_id)
+                send_msg(chat_id, f"💰 Ваш реферальный баланс: {balance/100:.2f}₽\n\nВы можете вывести средства или использовать их для оплаты подписки. Напишите в поддержку для вывода.", main_menu())
+
+            elif text == "📈 Статистика":
+                history = db_fetchall("SELECT * FROM analysis_history WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
+                if not history:
+                    send_msg(chat_id, "📊 У вас пока нет анализов. Проведите первый анализ!", main_menu())
+                    return
+                total = len(history)
+                avg_score = sum(h["score"] for h in history) / total
+                positives = []
+                negatives = []
+                for h in history:
+                    if h["positives"]:
+                        positives.extend(h["positives"].split(','))
+                    if h["negatives"]:
+                        negatives.extend(h["negatives"].split(','))
+                pos_counter = Counter(positives)
+                neg_counter = Counter(negatives)
+                top_pos = pos_counter.most_common(3)
+                top_neg = neg_counter.most_common(3)
+                ans = f"📊 Ваша статистика:\n"
+                ans += f"• Всего анализов: {total}\n"
+                ans += f"• Средний балл: {avg_score:.1f}\n"
+                ans += f"• Лучшие навыки: {', '.join([p[0] for p in top_pos]) if top_pos else '—'}\n"
+                ans += f"• Что улучшить: {', '.join([n[0] for n in top_neg]) if top_neg else '—'}\n"
+                send_msg(chat_id, ans, main_menu())
 
             elif text == "❓ Поддержка":
                 send_msg(chat_id, "📩 Напиши сообщение, я перешлю его @LyokhaPatron", {"inline_keyboard": [[{"text": "Написать", "callback_data": "support"}]]})
@@ -546,24 +670,24 @@ if __name__ == "__main__":
                 expiring = db_fetchall("SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now', '+3 days') AND end_date > datetime('now')")
                 for sub in expiring:
                     days = (datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S") - datetime.now(timezone.utc)).days
-                    send_msg(sub["user_id"], f"⏳ Подписка истекает через {days} дн.")
-                    time.sleep(0.5)
-                expired = db_fetchall("SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now')")
-                for sub in expired:
-                    db_execute("UPDATE subscriptions SET is_active = 0 WHERE id = ?", (sub["id"],))
-                    send_msg(sub["user_id"], "❌ Подписка истекла")
-                    time.sleep(0.5)
-            except Exception as e:
-                logger.error(f"Уведомления: {e}")
-                send_error_to_admin(f"Ошибка уведомлений: {e}")
-            time.sleep(86400)
-
-    threading.Thread(target=notif_loop, daemon=True).start()
-
-    while True:
-        try:
-            offset = get_updates(offset)
+                    send_msg(sub["user_id"], f"⏳ Подписка истекает через {days}
+                time.sleep(0.5)
+            expired = db_fetchall("SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now')")
+            for sub in expired:
+                db_execute("UPDATE subscriptions SET is_active = 0 WHERE id = ?", (sub["id"],))
+                send_msg(sub["user_id"], "❌ Подписка истекла")
+                time.sleep(0.5)
         except Exception as e:
-            logger.error(f"Основной цикл: {e}")
-            send_error_to_admin(f"Ошибка основного цикла: {e}")
-            time.sleep(5)
+            logger.error(f"Уведомления: {e}")
+            send_error_to_admin(f"Ошибка уведомлений: {e}")
+        time.sleep(86400)
+
+threading.Thread(target=notif_loop, daemon=True).start()
+
+while True:
+    try:
+        offset = get_updates(offset)
+    except Exception as e:
+        logger.error(f"Основной цикл: {e}")
+        send_error_to_admin(f"Ошибка основного цикла: {e}")
+        time.sleep(5)
