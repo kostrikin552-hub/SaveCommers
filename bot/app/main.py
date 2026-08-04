@@ -21,6 +21,7 @@ DB_PATH = "data.db"
 db_lock = threading.Lock()
 user_states = {}
 
+# ----- Инициализация БД -----
 def init_db():
     with db_lock:
         conn = sqlite3.connect(DB_PATH)
@@ -36,6 +37,7 @@ def init_db():
         conn.close()
 init_db()
 
+# ----- Функции работы с БД (исправлены) -----
 def db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -43,18 +45,52 @@ def db():
 
 def db_execute(q, p=()):
     with db_lock:
-        c = db().cursor()
-        c.execute(q, p)
-        db().commit()
+        conn = db()
+        try:
+            c = conn.cursor()
+            c.execute(q, p)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
 def db_fetchone(q, p=()):
     with db_lock:
-        return db().cursor().execute(q, p).fetchone()
+        conn = db()
+        try:
+            c = conn.cursor()
+            c.execute(q, p)
+            return c.fetchone()
+        finally:
+            conn.close()
 
 def db_fetchall(q, p=()):
     with db_lock:
-        return db().cursor().execute(q, p).fetchall()
+        conn = db()
+        try:
+            c = conn.cursor()
+            c.execute(q, p)
+            return c.fetchall()
+        finally:
+            conn.close()
 
+def db_execute_lastrowid(q, p=()):
+    with db_lock:
+        conn = db()
+        try:
+            c = conn.cursor()
+            c.execute(q, p)
+            conn.commit()
+            return c.lastrowid
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+# ----- Бизнес-логика -----
 def get_sub(user_id):
     return db_fetchone("SELECT * FROM subscriptions WHERE user_id = ? AND is_active = 1 AND end_date > datetime('now') ORDER BY end_date DESC", (user_id,))
 
@@ -92,6 +128,7 @@ def tariffs_kb():
         [{"text": "🎁 Активировать 3 дня бесплатно", "callback_data": "trial"}]
     ]}
 
+# ----- HTTP-сервер (вебхук) -----
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -113,6 +150,7 @@ class Handler(BaseHTTPRequestHandler):
 
 threading.Thread(target=lambda: HTTPServer(('', int(os.getenv("PORT", 10000))), Handler).serve_forever(), daemon=True).start()
 
+# ----- Обработка обновлений -----
 def process_update(update):
     if "message" in update:
         msg = update["message"]
@@ -279,7 +317,9 @@ def process_update(update):
             else:
                 send_msg(chat_id, "❌ Ошибка оплаты")
             answer_cb(cb["id"], "")
-            def get_updates(offset):
+
+# ----- Основной цикл и фоновые задачи -----
+def get_updates(offset):
     r = requests.get(f"{BOT_API}/getUpdates", params={"offset": offset, "timeout": 30})
     if r.status_code == 200 and r.json()["ok"]:
         for u in r.json()["result"]:
