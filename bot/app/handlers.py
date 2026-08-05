@@ -1,11 +1,11 @@
 import json, uuid, traceback, logging, requests
 from datetime import datetime
 from collections import Counter
-from config_db import ADMIN_ID, BASE_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, BOT_API
-from db import db_fetchone, db_fetchall, db_execute, db_execute_lastrowid
-from models_referrals import get_sub, create_sub, upsert_user, create_company, get_company_by_user, get_company_members, add_company_member
-from models_referrals import get_user_balance, apply_referral_bonus, generate_partner_code, get_partner_by_code
-from utils import send_msg, answer_cb, generate_signed_url, main_menu, tariffs_kb
+from .config_db import ADMIN_ID, BASE_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, BOT_API
+from .db import db_fetchone, db_fetchall, db_execute, db_execute_lastrowid
+from .models_referrals import get_sub, create_sub, upsert_user, create_company, get_company_by_user, get_company_members, add_company_member
+from .models_referrals import get_user_balance, apply_referral_bonus, generate_partner_code, get_partner_by_code
+from .utils import send_msg, answer_cb, generate_signed_url, main_menu, tariffs_kb
 
 logger = logging.getLogger(__name__)
 user_states = {}
@@ -22,7 +22,6 @@ def process_update(update):
             upsert_user(user_id, username, first_name, last_name)
             text = msg.get("text", "")
 
-            # Состояния (создание компании, вступление)
             if user_id in user_states:
                 state = user_states[user_id]
                 if state == 'creating_company':
@@ -55,9 +54,7 @@ def process_update(update):
                     user_states.pop(user_id, None)
                     return
 
-            # Обработка команд
             if text.startswith("/start"):
-                # Реферальные и партнёрские ссылки
                 ref_id = None
                 partner_code = None
                 if " " in text:
@@ -90,7 +87,6 @@ def process_update(update):
                     else:
                         send_msg(chat_id, "❌ Неверный партнёрский код")
 
-                # Приветствие и триал
                 sub = get_sub(user_id)
                 if not sub:
                     create_sub(user_id, "trial", 3)
@@ -187,7 +183,6 @@ def process_update(update):
             elif text == "❓ Поддержка":
                 send_msg(chat_id, "📩 Напиши сообщение, я перешлю его @LyokhaPatron", {"inline_keyboard": [[{"text": "Написать", "callback_data": "support"}]]})
 
-            # Админ-команды
             elif text.startswith("/"):
                 if user_id == ADMIN_ID:
                     parts = text.split()
