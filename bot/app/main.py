@@ -1,13 +1,12 @@
 import threading, time, logging, json
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from config_db import PORT, ADMIN_ID, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, logger
-from db import db_execute
-from models_referrals import create_sub, apply_referral_bonus, apply_partner_bonus
-from utils import send_msg
-from tasks import check_pending_payments, weekly_report_loop, notif_loop
-from handlers import get_updates
+from .config_db import PORT, ADMIN_ID, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, logger
+from .db import db_execute
+from .models_referrals import create_sub, apply_referral_bonus, apply_partner_bonus
+from .utils import send_msg
+from .tasks import check_pending_payments, weekly_report_loop, notif_loop
+from .handlers import get_updates
 
-# ---- HTTP-сервер (вебхуки и API) ----
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
@@ -63,7 +62,6 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-# ---- Запуск ----
 def start_http():
     server = HTTPServer(('', PORT), Handler)
     server.serve_forever()
