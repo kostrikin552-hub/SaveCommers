@@ -5,7 +5,7 @@ import threading
 import uuid
 import hmac
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 DB_PATH = "data.db"
 db_lock = threading.Lock()
@@ -141,10 +141,17 @@ def get_sub(user_id):
     )
 
 def create_sub(user_id, plan, days):
-    db_execute("UPDATE subscriptions SET is_active = 0 WHERE user_id = ?", (user_id,))
+    # Вычисляем даты в Python
+    now = datetime.now(timezone.utc)
+    start_date = now.strftime("%Y-%m-%d %H:%M:%S")
+    end_date = (now + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
     db_execute(
-        "INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (?, ?, 'active', datetime('now'), datetime('now', '+? days'), 1)",
-        (user_id, plan, days)
+        "UPDATE subscriptions SET is_active = 0 WHERE user_id = ?",
+        (user_id,)
+    )
+    db_execute(
+        "INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (?, ?, 'active', ?, ?, 1)",
+        (user_id, plan, start_date, end_date)
     )
 
 def upsert_user(user_id, username, first_name, last_name):
@@ -194,4 +201,4 @@ def tariffs_kb():
             [{"text": "🏢 B2B 4990₽/мес (до 10 чел)", "callback_data": "tariff_b2b"}],
             [{"text": "🎁 Активировать 3 дня бесплатно", "callback_data": "trial"}]
         ]
-                }
+            }
