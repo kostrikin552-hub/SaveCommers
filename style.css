@@ -1,0 +1,111 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #f0f9f6;
+    padding: 16px;
+}
+#app {
+    max-width: 600px;
+    margin: auto;
+    background: #fff;
+    padding: 24px;
+    border-radius: 24px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+}
+h1 {
+    color: #0f2e2a;
+    font-size: 28px;
+    margin-bottom: 16px;
+}
+textarea {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    border: 2px solid #d1e8e2;
+    min-height: 140px;
+    font-size: 15px;
+    resize: vertical;
+}
+button {
+    background: #1a6b5a;
+    color: #fff;
+    border: none;
+    padding: 14px;
+    width: 100%;
+    border-radius: 12px;
+    font-size: 16px;
+    cursor: pointer;
+    margin-top: 8px;
+    font-weight: 600;
+}
+.btn-secondary {
+    background: #e8f2ef;
+    color: #0f2e2a;
+}
+.score {
+    font-size: 48px;
+    text-align: center;
+    font-weight: 700;
+}
+.good { color: #1a6b5a; }
+.medium { color: #c47b2e; }
+.bad { color: #c0392b; }
+.error-box {
+    background: #fdf0ee;
+    padding: 12px;
+    border-radius: 8px;
+    margin: 12px 0;
+    border-left: 4px solid #c0392b;
+}
+.suggestion-box {
+    background: #eaf7f2;
+    padding: 12px;
+    border-radius: 8px;
+    margin: 12px 0;
+    border-left: 4px solid #1a6b5a;
+}
+.feedback-item {
+    padding: 6px 12px;
+    margin: 4px 0;
+    border-radius: 8px;
+}
+.positive { background: #eaf7f2; color: #0f4a3f; }
+.negative { background: #fdf0ee; color: #a93226; }
+.draft-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.draft-buttons button {
+    flex: 1;
+    min-width: 80px;
+    background: #e8f2ef;
+    color: #0f2e2a;
+    padding: 10px;
+}
+.expert-locked {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.info-box {
+    background: #eaf7f2;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+.template-select {
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #d1e8e2;
+    margin-bottom: 8px;
+}
+.share-btn {
+    background: #2d7a6b;
+    margin-top: 4px;
+}
