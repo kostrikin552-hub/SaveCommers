@@ -290,7 +290,7 @@ def process_update(update):
                     send_msg(ADMIN_ID, f"📩 От {user_id}: {text}")
                     send_msg(chat_id, "✅ Отправлено в поддержку")
 
-        # ---------- Callback-запросы ----------
+                # ---------- Callback-запросы ----------
         elif "callback_query" in update:
             cb = update["callback_query"]
             user_id = cb["from"]["id"]
@@ -354,7 +354,7 @@ def process_update(update):
                         ]
                     }
                     send_msg(chat_id, f"💰 У вас на балансе {balance/100:.2f}₽. Вы можете оплатить подписку {plan} за {amount}₽ из баланса или картой.", kb)
-                                else:
+                else:
                     # Обычный процесс оплаты картой
                     payment_id = str(uuid.uuid4())
                     url = "https://api.yookassa.ru/v3/payments"
