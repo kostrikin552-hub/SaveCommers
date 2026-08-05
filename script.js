@@ -1,5 +1,5 @@
 // ============================================================
-// УПРОЩЁННАЯ ВЕРСИЯ — без проверки подписи и сохранения на сервер
+// Улучшенная генерация ответов с учётом контекста диалога
 // ============================================================
 
 document.getElementById('example-btn').onclick = function() {
@@ -65,6 +65,39 @@ document.getElementById('analyze-btn').onclick = function() {
         if (/дорого|цена высокая|дороговато|подумаю/.test(f)) return 'Работа с возражениями';
         if (/следующий|дальше|договор|счёт|бронирую|приступаю/.test(f)) return 'Закрытие';
         return 'Не определен';
+    }
+
+    // ---------- ИЗВЛЕЧЕНИЕ КЛЮЧЕВЫХ ДАННЫХ ----------
+    function extractContext(msgs, stage) {
+        const allText = msgs.map(m => m.text).join(' ');
+        const clientText = msgs.filter(m => m.sender !== 'вы').map(m => m.text).join(' ');
+        const managerText = msgs.filter(m => m.sender === 'вы').map(m => m.text).join(' ');
+        const lastClient = msgs.filter(m => m.sender !== 'вы').pop()?.text || '';
+
+        // Имя клиента (если есть)
+        let clientName = '';
+        const nameMatch = clientText.match(/меня зовут\s+(\w+)/i) || clientText.match(/я\s+(\w+)/i);
+        if (nameMatch) clientName = nameMatch[1];
+
+        // Сумма
+        let amount = '';
+        const amountMatch = allText.match(/(\d{2,}\s*(?:тыс|тысяч|руб|₽|k))/i);
+        if (amountMatch) amount = amountMatch[0];
+
+        // Сроки
+        let deadline = '';
+        const deadlineMatch = allText.match(/(\d+\s*(?:дней|дня|день|недель|месяцев))/i);
+        if (deadlineMatch) deadline = deadlineMatch[0];
+
+        // Бизнес
+        let business = '';
+        const businessMatch = allText.match(/для\s+([а-яё\s]+?)(?:\s+сайт|\s+бизнес|\.|,|$)/i);
+        if (businessMatch) business = businessMatch[1].trim();
+
+        // Есть ли возражение по цене
+        const hasPriceObj = /дорого|цена высокая|дороговато|подумаю/.test(clientText);
+
+        return { clientName, amount, deadline, business, hasPriceObj, lastClient, allText };
     }
 
     const messages = parseDialog(text);
@@ -133,36 +166,68 @@ document.getElementById('analyze-btn').onclick = function() {
         err = { name: 'Отличный диалог!', desc: 'Все правила выполнены', sug: 'Продолжайте в том же духе!' };
     }
 
-    // ---------- ГЕНЕРАЦИЯ ОТВЕТОВ ----------
-    function genDraft(client) {
-        let soft, business, expert;
-        const hasPrice = /дорого|цена высокая|дороговато|подумаю/.test(client.toLowerCase());
-        if (hasPrice) {
-            soft = 'Понимаю, что цена — важный фактор. Давайте вместе посмотрим, что входит в стоимость, и я покажу, как это окупается.';
-            business = 'Спасибо за вопрос о цене. Мы предлагаем гибкие условия. Расскажите о вашем бюджете, и я подберу оптимальный вариант.';
-            expert = 'Хороший вопрос. На основе моего опыта, клиенты чаще всего выбирают комплексное решение, потому что оно даёт наибольшую выгоду.';
-        } else if (err.name.includes('Вопросы')) {
-            soft = 'Давайте уточним несколько моментов, чтобы я мог предложить вам лучшее решение. Например, какие задачи вы хотите решить?';
-            business = 'Прежде чем перейти к обсуждению, разрешите задать несколько уточняющих вопросов. Это поможет нам быстрее найти оптимальное решение.';
-            expert = 'Чтобы предложить вам наилучший вариант, давайте уточним несколько ключевых деталей. Какую конкретно проблему вы хотите решить?';
-        } else if (err.name.includes('Эмпатия')) {
-            soft = 'Я слышу вас. Давайте вместе подумаем, как лучше решить эту задачу. Ваши пожелания очень важны.';
-            business = 'Благодарю за подробности. Я понимаю ваши опасения и готов предложить варианты, которые учтут все ваши требования.';
-            expert = 'Отличный вопрос. Я полностью разделяю ваше внимание к деталям и готов дать рекомендации, исходя из вашего запроса.';
+    // ---------- ИЗВЛЕЧЕНИЕ КОНТЕКСТА ----------
+    const stage = detectStage(messages);
+    const ctx = extractContext(messages, stage);
+
+    // ---------- УЛУЧШЕННАЯ ГЕНЕРАЦИЯ ОТВЕТОВ ----------
+    function genDraft(ctx, err, stage) {
+        const { clientName, amount, deadline, business, hasPriceObj, lastClient, allText } = ctx;
+        const name = clientName ? clientName : 'вам';
+        const amountStr = amount ? amount : 'нашу цену';
+        const deadlineStr = deadline ? deadline : 'сроки';
+        const businessStr = business ? business : 'ваш проект';
+
+        let soft, businessAnswer, expertAnswer;
+
+        // ---- МЯГКИЙ ОТВЕТ ----
+        if (hasPriceObj) {
+            soft = `Понимаю, что ${amountStr} — важный фактор для ${businessStr}. Давайте вместе разберём, из чего складывается стоимость, и я покажу, как это поможет вам сэкономить и получить качественный результат. Если хотите, можем обсудить альтернативные варианты, которые лучше соответствуют вашему бюджету. ${name} устраивает такой подход?`;
+        } else if (stage === 'Знакомство' || stage === 'Выявление потребностей') {
+            soft = `Рад(а) познакомиться с вами, ${name}! Чтобы я мог(ла) предложить наилучшее решение для ${businessStr}, давайте уточним несколько деталей. Расскажите, что для вас самое важное в этом проекте? Я внимательно вас слушаю.`;
+        } else if (stage === 'Презентация') {
+            soft = `Отлично, ${name}, я вижу, что мы движемся к хорошему решению. Позвольте мне предложить вам конкретные шаги, которые помогут достичь результата. Если что-то будет неясно, я всегда на связи.`;
+        } else if (stage === 'Закрытие') {
+            soft = `${name}, мы с вами обсудили все ключевые моменты. Я готов(а) подготовить договор и начать работу. Если у вас есть последние вопросы или уточнения, давайте их обсудим, чтобы всё было идеально.`;
         } else {
-            soft = 'Понимаю ваше беспокойство. Давайте вместе разберёмся в этом вопросе. Если готовы продолжить, давайте обсудим детали.';
-            business = 'Благодарю за обращение. Исходя из вашего запроса, предлагаю перейти к следующему шагу. Какие вопросы у вас остались?';
-            expert = 'На основе моего опыта, рекомендую начать с анализа. Когда вам удобно созвониться?';
+            soft = `Спасибо за ваше время, ${name}. Я ценю ваши вопросы и готов(а) помочь с ${businessStr}. Давайте продолжим общение и сделаем этот проект успешным.`;
         }
-        if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(soft)) soft += '\n\nЕсли это звучит для вас разумно, давайте обсудим детали. Как вам такой подход?';
-        if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(business)) business += '\n\nПредлагаю перейти к следующему шагу. Какие вопросы у вас остались?';
-        if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(expert)) expert += '\n\nРекомендую начать с анализа. Когда вам удобно созвониться?';
-        return { soft, business, expert };
+
+        // ---- ДЕЛОВОЙ ОТВЕТ ----
+        if (hasPriceObj) {
+            businessAnswer = `Благодарю за уточнение по бюджету. Стоимость ${amountStr} обоснована следующим составом работ: [перечислить ключевые этапы]. Мы готовы предложить гибкую систему оплаты, чтобы вам было удобно. Прошу вас рассмотреть наше предложение и сообщить о решении в ближайшее время.`;
+        } else if (stage === 'Знакомство' || stage === 'Выявление потребностей') {
+            businessAnswer = `Здравствуйте, ${name}. Для того чтобы предложить вам оптимальное решение для ${businessStr}, мне необходимо получить следующую информацию: [список вопросов]. На основе ваших ответов я подготовлю детальное коммерческое предложение в течение 24 часов.`;
+        } else if (stage === 'Презентация') {
+            businessAnswer = `Исходя из ваших требований, я предлагаю следующий план работ: [краткое описание]. Сроки: ${deadlineStr}. Прошу вас подтвердить согласие, чтобы мы могли перейти к оформлению документов.`;
+        } else if (stage === 'Закрытие') {
+            businessAnswer = `Подготовлены все документы для старта. Ожидаю вашего подтверждения по договору и счёту. После оплаты мы приступаем к выполнению работ согласно согласованному графику. Жду вашего ответа.`;
+        } else {
+            businessAnswer = `Спасибо за обращение. На основе нашего диалога я сформирую предложение для ${businessStr}. Ожидайте его в течение дня. Если нужны оперативные правки, напишите мне.`;
+        }
+
+        // ---- ЭКСПЕРТНЫЙ ОТВЕТ ----
+        if (hasPriceObj) {
+            expertAnswer = `Отличный вопрос о цене, ${name}. На основе моего опыта с проектами в ${businessStr}, наиболее эффективным решением является комплексный подход, который включает [перечень услуг]. Это позволит вам не только получить качественный сайт, но и увеличить конверсию на 20-30%. Я рекомендую не экономить на качестве, так как это напрямую влияет на ваш доход. Если бюджет ограничен, можем сделать поэтапную реализацию. Как вам такой вариант?`;
+        } else if (stage === 'Знакомство' || stage === 'Выявление потребностей') {
+            expertAnswer = `Здравствуйте, ${name}. Как эксперт в области ${businessStr}, я вижу, что ключевые точки роста в вашем проекте — это [выделить]. Давайте сфокусируемся на них, чтобы максимизировать результат. Для этого мне нужно задать вам несколько профессиональных вопросов. Вы готовы?`;
+        } else if (stage === 'Презентация') {
+            expertAnswer = `На основе анализа ваших задач я рекомендую следующую стратегию: [описание]. Это проверенный подход, который я применял в 10+ успешных проектах. Результат — повышение эффективности на 30%. Давайте утвердим этот план и начнём внедрение.`;
+        } else if (stage === 'Закрытие') {
+            expertAnswer = `${name}, я вижу, что все детали согласованы. Я подготовлю все документы сегодня и начну работу, чтобы уложиться в ${deadlineStr}. Моя рекомендация — не затягивать с принятием решения, чтобы мы успели сделать всё в срок. Жду вашего «да».`;
+        } else {
+            expertAnswer = `С удовольствием помогу вам с ${businessStr}. Как практикующий специалист, я гарантирую высокое качество и чёткое соблюдение сроков. Давайте перейдём к делу.`;
+        }
+
+        // Добавляем вопрос или призыв к действию в конце, если их нет
+        if (!/\?|давайте|согласны|подходит|устраивает/.test(soft)) soft += `\n\n${name}, как вам такой подход?`;
+        if (!/\?|давайте|согласны|подходит|устраивает/.test(businessAnswer)) businessAnswer += `\n\nЖду вашего ответа.`;
+        if (!/\?|давайте|согласны|подходит|устраивает/.test(expertAnswer)) expertAnswer += `\n\nСогласны двигаться дальше?`;
+
+        return { soft, businessAnswer, expertAnswer };
     }
 
-    const drafts = genDraft(lastClient);
-    const stage = detectStage(messages);
-    const probability = Math.min(90, Math.max(20, Math.round(score * 0.7 + 20)));
+    const drafts = genDraft(ctx, err, stage);
 
     // ---------- ВЫВОД РЕЗУЛЬТАТА ----------
     document.getElementById('step-upload').style.display = 'none';
@@ -171,6 +236,7 @@ document.getElementById('analyze-btn').onclick = function() {
     const scoreColor = score >= 70 ? 'good' : score >= 40 ? 'medium' : 'bad';
     let posHtml = pos.slice(0, 10).map(p => `<div class="feedback-item positive">${p}</div>`).join('');
     let negHtml = neg.slice(0, 10).map(n => `<div class="feedback-item negative">${n}</div>`).join('');
+    const probability = Math.min(90, Math.max(20, Math.round(score * 0.7 + 20)));
 
     container.innerHTML = `
         <div class="score ${scoreColor}">${score}/100</div>
@@ -179,41 +245,4 @@ document.getElementById('analyze-btn').onclick = function() {
         <div style="text-align:center;font-size:20px;margin:12px 0;">📈 Вероятность закрытия сделки: <strong>${probability}%</strong></div>
         <div class="error-box"><strong>🔥 Главная ошибка</strong><p><strong>${err.name}</strong></p><p>${err.desc}</p></div>
         <div class="suggestion-box"><strong>💡 Как исправить</strong><p>${err.sug}</p></div>
-        <div><strong>✅ Что получилось хорошо</strong><div>${posHtml || '<p style="color:#94a3b8;">Пока нет</p>'}</div></div>
-        <div><strong>❌ Что можно улучшить</strong><div>${negHtml || '<p style="color:#94a3b8;">Отлично!</p>'}</div></div>
-        <div style="margin-top:16px;"><strong>📋 Чек-лист для улучшения:</strong><ul style="list-style:none;padding:0;">${neg.slice(0,5).map(n => `<li style="padding:4px 0;border-bottom:1px solid #eee;">☐ ${n.replace('✖ ', '')}</li>`).join('')}</ul></div>
-        <div><strong>💬 Лучший ответ</strong><div class="draft-buttons">
-            <button data-text="${drafts.soft.replace(/"/g, '&quot;')}">Мягкий</button>
-            <button data-text="${drafts.business.replace(/"/g, '&quot;')}">Деловой</button>
-            <button data-text="${drafts.expert.replace(/"/g, '&quot;')}">Экспертный</button>
-        </div></div>
-        <button onclick="location.reload()" style="background:#e8f2ef;color:#0f2e2a;">🔄 Новый анализ</button>
-    `;
-
-    // ---------- КОПИРОВАНИЕ ОТВЕТОВ ----------
-    document.querySelectorAll('.draft-buttons button').forEach(b => {
-        b.onclick = function() {
-            const text = this.dataset.text;
-            copyText(text);
-        };
-    });
-};
-
-// ---------- ФУНКЦИЯ КОПИРОВАНИЯ ----------
-function copyText(t) {
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(t).then(() => alert('✅ Скопировано!')).catch(() => fallbackCopy(t));
-    } else {
-        fallbackCopy(t);
-    }
-}
-
-function fallbackCopy(t) {
-    const ta = document.createElement('textarea');
-    ta.value = t;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    alert('✅ Скопировано!');
-                        }
+        <div><strong>✅ Что получилось хорошо</strong><div>${posHtml || '<p style="color:#94a3b8;">Пока нет
