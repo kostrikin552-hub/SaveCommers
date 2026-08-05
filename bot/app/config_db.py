@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Конфигурация
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN: raise ValueError("BOT_TOKEN not set")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "5629144056"))
@@ -19,7 +18,6 @@ PORT = int(os.getenv("PORT", 10000))
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# База данных
 db_lock = threading.Lock()
 
 def db():
@@ -81,8 +79,7 @@ def db_execute_lastrowid(q, p=()):
 
 def send_error_to_admin(text):
     try:
-        # функция send_msg будет импортирована позже, поэтому используем отложенный импорт
-        from utils import send_msg
+        from .utils import send_msg
         send_msg(ADMIN_ID, f"🚨 Критическая ошибка:\n{text[:4000]}")
     except:
         pass
