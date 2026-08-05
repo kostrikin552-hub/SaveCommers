@@ -15,7 +15,7 @@ from .utils import send_msg, answer_cb, send_error_to_admin
 
 logger = logging.getLogger(__name__)
 
-user_states = {}  # {user_id: state}
+user_states = {}
 
 def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username):
     try:
@@ -29,7 +29,6 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
             upsert_user(user_id, username, first_name, last_name)
             text = msg.get("text", "")
 
-            # Состояния (создание/вступление в компанию)
             if user_id in user_states:
                 state = user_states[user_id]
                 if state == 'creating_company':
@@ -62,21 +61,17 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     user_states.pop(user_id, None)
                     return
 
-            # Команды
             if text.startswith("/start"):
                 parts = text.split()
-                ref_code = None
                 if len(parts) > 1 and parts[1].startswith("ref_"):
                     ref_code = parts[1][4:]
                     owner = db_fetchone("SELECT user_id FROM user_ref_codes WHERE code = ?", (ref_code,))
                     if owner:
                         db_execute("INSERT OR IGNORE INTO referrals (referrer_id, referred_id) VALUES (?, ?)", (owner[0], user_id))
-                # Создаём пробную подписку, если нет активной
                 sub = get_sub(user_id)
                 if not sub:
                     create_sub(user_id, "trial", 3)
                     sub = get_sub(user_id)
-                # Формируем приветствие
                 trial_msg = ""
                 if sub and sub["plan_type"] == "trial":
                     days_left = (datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S") - datetime.now(timezone.utc)).days
@@ -85,12 +80,7 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     trial_msg = f"🔓 Подписка {sub['plan_type'].upper()} до {sub['end_date']}\n"
                 else:
                     trial_msg = "⛔ Нет активной подписки\n"
-                send_msg(
-                    chat_id,
-                    f"🌊 Привет, {first_name}!\n{trial_msg}Нажми 'Новый анализ' и вставь переписку.",
-                    main_menu(),
-                    bot_token=bot_token
-                )
+                send_msg(chat_id, f"🌊 Привет, {first_name}!\n{trial_msg}Нажми 'Новый анализ' и вставь переписку.", bot_token=bot_token, kb=main_menu())
                 return
 
             elif text == "🚀 Новый анализ":
@@ -98,10 +88,10 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 has_sub = 1 if sub else 0
                 signed_url = generate_signed_url(user_id, has_sub, secret_key, webapp_url)
                 kb = {"inline_keyboard": [[{"text": "📂 Открыть анализатор", "web_app": {"url": signed_url}}]]}
-                send_msg(chat_id, "🔓 Открываю...", kb, bot_token=bot_token)
+                send_msg(chat_id, "🔓 Открываю...", bot_token=bot_token, kb=kb)
 
             elif text == "💎 Тарифы":
-                send_msg(chat_id, "💰 Выбери тариф:\n🔓 Pro 990₽/мес\n👑 Premium 1990₽/мес\n🏢 B2B 4990₽/мес", tariffs_kb(), bot_token=bot_token)
+                send_msg(chat_id, "💰 Выбери тариф:\n🔓 Pro 990₽/мес\n👑 Premium 1990₽/мес\n🏢 B2B 4990₽/мес", bot_token=bot_token, kb=tariffs_kb())
 
             elif text == "📊 Мой прогресс":
                 sub = get_sub(user_id)
@@ -116,7 +106,7 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                         ans += f"• {h['created_at'][:10]}: {h['score']}/100, {h['markers_found']} маркеров\n"
                 else:
                     ans += "Нет истории"
-                send_msg(chat_id, ans, main_menu(), bot_token=bot_token)
+                send_msg(chat_id, ans, bot_token=bot_token, kb=main_menu())
 
             elif text == "👥 B2B":
                 company = db_fetchone(
@@ -131,7 +121,7 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     ans = f"🏢 {company['name']}\nКод: {company['invite_code']}\nСотрудников: {len(members)}\n"
                     for m in members:
                         ans += f"• {m['first_name']} @{m['username'] or 'нет'}\n"
-                    send_msg(chat_id, ans, main_menu(), bot_token=bot_token)
+                    send_msg(chat_id, ans, bot_token=bot_token, kb=main_menu())
                 else:
                     kb = {
                         "inline_keyboard": [
@@ -139,14 +129,13 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                             [{"text": "Ввести код", "callback_data": "join_company"}]
                         ]
                     }
-                    send_msg(chat_id, "👥 Создай компанию или введи код", kb, bot_token=bot_token)
+                    send_msg(chat_id, "👥 Создай компанию или введи код", bot_token=bot_token, kb=kb)
 
             elif text == "❓ Поддержка":
                 kb = {"inline_keyboard": [[{"text": "Написать", "callback_data": "support"}]]}
-                send_msg(chat_id, "📩 Напиши сообщение, я перешлю его @LyokhaPatron", kb, bot_token=bot_token)
+                send_msg(chat_id, "📩 Напиши сообщение, я перешлю его @LyokhaPatron", bot_token=bot_token, kb=kb)
 
             elif text.startswith("/"):
-                # Админские команды и /referral
                 if user_id == admin_id:
                     parts = text.split()
                     if parts[0] == "/activate" and len(parts) >= 3:
@@ -169,16 +158,12 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                         count, bonus_days = get_referral_stats(user_id)
                         send_msg(chat_id, f"🔗 Ваша реферальная ссылка:\n{ref_link}\n\nПриведи друга — получи +3 дня Premium!\nПриведено: {count} чел., бонусов: {bonus_days} дн.", bot_token=bot_token)
                 else:
-                    # Если обычный пользователь ввел /referral
                     if text.startswith("/referral"):
                         code = get_referral_code(user_id)
                         ref_link = f"https://t.me/{bot_username}?start=ref_{code}"
                         count, bonus_days = get_referral_stats(user_id)
                         send_msg(chat_id, f"🔗 Ваша реферальная ссылка:\n{ref_link}\n\nПриведи друга — получи +3 дня Premium!\nПриведено: {count} чел., бонусов: {bonus_days} дн.", bot_token=bot_token)
-                    else:
-                        pass  # игнорируем другие команды
             else:
-                # Если не команда — пересылаем в поддержку
                 send_msg(admin_id, f"📩 От {user_id} ({first_name}): {text}", bot_token=bot_token)
                 send_msg(chat_id, "✅ Отправлено в поддержку", bot_token=bot_token)
 
@@ -232,7 +217,7 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                         (user_id, r["id"], int(amount*100), plan)
                     )
                     kb = {"inline_keyboard": [[{"text": "💳 Оплатить", "url": r["confirmation"]["confirmation_url"]}]]}
-                    send_msg(chat_id, f"💳 Оплата {plan}: {amount}₽", kb, bot_token=bot_token)
+                    send_msg(chat_id, f"💳 Оплата {plan}: {amount}₽", bot_token=bot_token, kb=kb)
                 else:
                     send_msg(chat_id, "❌ Ошибка оплаты", bot_token=bot_token)
                 answer_cb(cb["id"], bot_token=bot_token)
