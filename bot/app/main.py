@@ -2,7 +2,7 @@ import threading, time, logging, json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from .config_db import PORT, ADMIN_ID, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, logger
 from .config_db import db_execute
-from .models_referrals import create_sub, apply_referral_bonus, apply_partner_bonus
+from .models_referrals import create_sub, apply_referral_bonus
 from .utils import send_msg
 from .tasks import check_pending_payments, weekly_report_loop, notif_loop
 from .handlers import get_updates
@@ -30,8 +30,7 @@ class Handler(BaseHTTPRequestHandler):
                     amount_cents = int(float(obj.get("amount", {}).get("value", 0)) * 100)
                     if user_id:
                         create_sub(user_id, plan_type, 30)
-                        apply_referral_bonus(user_id)
-                        apply_partner_bonus(user_id, payment_id, amount_cents)
+                        apply_referral_bonus(user_id, payment_id, amount_cents)
                         db_execute("UPDATE payments SET status='succeeded' WHERE payment_id=?", (payment_id,))
                 self.send_response(200)
                 self.end_headers()
