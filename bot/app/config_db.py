@@ -77,13 +77,6 @@ def db_execute_lastrowid(q, p=()):
         finally:
             conn.close()
 
-def send_error_to_admin(text):
-    try:
-        from .utils import send_msg
-        send_msg(ADMIN_ID, f"🚨 Критическая ошибка:\n{text[:4000]}")
-    except:
-        pass
-
 def init_db():
     with db_lock:
         conn = sqlite3.connect(DB_PATH)
