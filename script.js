@@ -1,8 +1,3 @@
-// ================================================================
-// SaleFlow — РАБОЧАЯ версия с персонализированными ответами
-// Основана на предыдущей стабильной версии
-// ================================================================
-
 document.getElementById('example-btn').onclick = function() {
     document.getElementById('dialog-input').value =
         'Клиент: Здравствуйте, нужно создать сайт, сколько будет стоить?\n' +
@@ -21,8 +16,7 @@ document.getElementById('analyze-btn').onclick = function() {
     const text = input.value.trim();
     if (!text) return alert('Вставьте текст переписки');
 
-    // ---------- ПАРСИНГ (работает) ----------
-    function parseDialog(t) {
+    function parse(t) {
         const lines = t.split('\n').filter(l => l.trim());
         if (!lines.length) return [];
         const hasLabels = lines.some(l => /^(вы|клиент):/i.test(l.trim().toLowerCase()));
@@ -57,7 +51,6 @@ document.getElementById('analyze-btn').onclick = function() {
         }
     }
 
-    // ---------- ОПРЕДЕЛЕНИЕ ЭТАПА ----------
     function detectStage(msgs) {
         const f = msgs.map(m => m.text).join(' ').toLowerCase();
         if (/здравствуй|добрый день|привет/.test(f) && msgs.length < 4) return 'Знакомство';
@@ -68,7 +61,7 @@ document.getElementById('analyze-btn').onclick = function() {
         return 'Не определен';
     }
 
-    const messages = parseDialog(text);
+    const messages = parse(text);
     if (messages.length < 2) return alert('Не удалось распознать диалог');
     const managerMsgs = messages.filter(m => m.sender === 'вы');
     const clientMsgs = messages.filter(m => m.sender !== 'вы');
@@ -77,7 +70,6 @@ document.getElementById('analyze-btn').onclick = function() {
     const lastManager = managerMsgs[managerMsgs.length - 1]?.text || '';
     const lastClient = clientMsgs[clientMsgs.length - 1]?.text || '';
 
-    // ---------- ПРАВИЛА (без изменений) ----------
     const rules = [
         { id: 'greeting', name: 'Приветствие', w: 3, ch: () => /здравствуй|добрый день|привет|доброе утро/.test(full), neg: '✖ Нет приветствия', pos: '✔ Поприветствовали клиента', sug: 'Начинайте с приветствия.' },
         { id: 'empathy1', name: 'Эмпатия (понимание)', w: 4, ch: () => /понимаю|слышу|согласен|разделяю/.test(full), neg: '✖ Нет фраз понимания', pos: '✔ Проявили понимание', sug: 'Используйте "понимаю", "слышу".' },
@@ -110,7 +102,6 @@ document.getElementById('analyze-btn').onclick = function() {
         { id: 'speed', name: 'Не затягивайте', w: 2, ch: () => managerMsgs.length <= clientMsgs.length + 1, neg: '✖ Слишком много сообщений', pos: '✔ Отвечаете адекватно', sug: 'Не перегружайте.' }
     ];
 
-    // ---------- РАСЧЁТ ----------
     let passed = 0, total = 0, pos = [], neg = [];
     rules.forEach(r => {
         const ok = r.ch();
@@ -121,7 +112,6 @@ document.getElementById('analyze-btn').onclick = function() {
     let score = Math.round((passed / total) * 100);
     score = Math.min(100, Math.max(0, score));
 
-    // ---------- ГЛАВНАЯ ОШИБКА ----------
     let err = null;
     const firstFailed = rules.find((r, idx) => !r.ch() && neg[idx]);
     if (firstFailed) {
@@ -134,73 +124,54 @@ document.getElementById('analyze-btn').onclick = function() {
         err = { name: 'Отличный диалог!', desc: 'Все правила выполнены', sug: 'Продолжайте в том же духе!' };
     }
 
-    // ---------- ИЗВЛЕЧЕНИЕ КОНТЕКСТА ----------
-    const allText = messages.map(m => m.text).join(' ');
-    let clientName = '';
-    const nameMatch = allText.match(/меня зовут\s+(\w+)/i) || allText.match(/я\s+(\w+)/i);
-    if (nameMatch) clientName = nameMatch[1];
-
-    let amount = '';
-    const amountMatch = allText.match(/(\d{2,}\s*(?:тыс|тысяч|руб|₽|k))/i);
-    if (amountMatch) amount = amountMatch[0];
-
-    let business = '';
-    const businessMatch = allText.match(/для\s+([а-яё\s]+?)(?:\s+сайт|\s+бизнес|\.|,|$)/i);
-    if (businessMatch) business = businessMatch[1].trim();
-
-    const hasPriceObj = /дорого|цена высокая|дороговато|подумаю/.test(
-        clientMsgs.map(m => m.text).join(' ').toLowerCase()
-    );
-    const stage = detectStage(messages);
-
-    // ---------- НОВАЯ ГЕНЕРАЦИЯ ОТВЕТОВ (ПЕРСОНАЛИЗИРОВАННАЯ) ----------
-    function genDraft(client, err, ctx) {
-        const { name, amount, business, hasPriceObj, stage } = ctx;
-        const n = name ? name : 'вам';
-        const a = amount ? amount : 'нашу цену';
-        const b = business ? business : 'ваш проект';
-        let soft, businessAns, expertAns;
-
-        if (hasPriceObj) {
-            soft = `Понимаю, что ${a} — важный фактор. Давайте вместе разберём, из чего складывается стоимость для ${b}. Я покажу, как это окупается. Согласны?`;
-            businessAns = `Благодарю за вопрос о цене. ${a} обоснована объёмом работ. Готов обсудить гибкие условия оплаты. Жду вашего решения.`;
-            expertAns = `Отличный вопрос, ${n}. Из моего опыта в ${b}, комплексный подход даёт лучший результат. Я рекомендую не экономить на качестве, это повысит вашу прибыль. Могу предложить поэтапную реализацию.`;
-        } else if (stage === 'Знакомство' || stage === 'Выявление потребностей') {
-            soft = `Рад(а) познакомиться, ${n}! Чтобы подобрать идеальное решение для ${b}, давайте уточним ваши задачи. Расскажите подробнее.`;
-            businessAns = `Здравствуйте, ${n}. Для расчёта точной стоимости мне нужно знать [список вопросов]. Жду ваши ответы.`;
-            expertAns = `${n}, как эксперт в ${b}, я вижу основной фокус — [ключевая задача]. Давайте углубимся в это.`;
-        } else if (stage === 'Презентация') {
-            soft = `Отлично, ${n}! Мы движемся к хорошему решению. Позвольте предложить конкретные шаги для ${b}.`;
-            businessAns = `На основе ваших требований предлагаю план: [краткое описание]. Сроки обсудим отдельно.`;
-            expertAns = `Я рекомендую стратегию, которая сработала в моих проектах. Для ${b} это даст рост на 20-30%.`;
-        } else if (stage === 'Закрытие') {
-            soft = `${n}, мы всё обсудили. Готов(а) подготовить договор и начать работу. Есть ли у вас последние вопросы?`;
-            businessAns = `Документы готовы. Жду подтверждения, чтобы начать.`;
-            expertAns = `${n}, не затягивайте с решением — это позволит нам уложиться в сроки. Я жду вашего «да».`;
+    function genDraft(client) {
+        let soft, business, expert;
+        const hasPrice = /дорого|цена высокая|дороговато|подумаю/.test(client.toLowerCase());
+        if (hasPrice) {
+            soft = 'Понимаю, что цена — важный фактор. Давайте вместе посмотрим, что входит в стоимость, и я покажу, как это окупается.';
+            business = 'Спасибо за вопрос о цене. Мы предлагаем гибкие условия. Расскажите о вашем бюджете, и я подберу оптимальный вариант.';
+            expert = 'Хороший вопрос. На основе моего опыта, клиенты чаще всего выбирают комплексное решение, потому что оно даёт наибольшую выгоду.';
+        } else if (err.name.includes('Вопросы')) {
+            soft = 'Давайте уточним несколько моментов, чтобы я мог предложить вам лучшее решение. Например, какие задачи вы хотите решить?';
+            business = 'Прежде чем перейти к обсуждению, разрешите задать несколько уточняющих вопросов. Это поможет нам быстрее найти оптимальное решение.';
+            expert = 'Чтобы предложить вам наилучший вариант, давайте уточним несколько ключевых деталей. Какую конкретно проблему вы хотите решить?';
+        } else if (err.name.includes('Эмпатия')) {
+            soft = 'Я слышу вас. Давайте вместе подумаем, как лучше решить эту задачу. Ваши пожелания очень важны.';
+            business = 'Благодарю за подробности. Я понимаю ваши опасения и готов предложить варианты, которые учтут все ваши требования.';
+            expert = 'Отличный вопрос. Я полностью разделяю ваше внимание к деталям и готов дать рекомендации, исходя из вашего запроса.';
         } else {
-            soft = `Спасибо, ${n}. Я готов(а) помочь с ${b}. Давайте продолжим.`;
-            businessAns = `Ожидайте коммерческое предложение.`;
-            expertAns = `С удовольствием возьмусь за ${b}. Обещаю качество.`;
+            soft = 'Понимаю ваше беспокойство. Давайте вместе разберёмся в этом вопросе. Если готовы продолжить, давайте обсудим детали.';
+            business = 'Благодарю за обращение. Исходя из вашего запроса, предлагаю перейти к следующему шагу. Какие вопросы у вас остались?';
+            expert = 'На основе моего опыта, рекомендую начать с анализа. Когда вам удобно созвониться?';
         }
-
-        // Добавляем вопрос, если его нет
-        if (!/\?|давайте|согласны|подходит/.test(soft)) soft += `\n\nКак вам такой подход, ${n}?`;
-        if (!/\?|давайте|согласны|подходит/.test(businessAns)) businessAns += `\n\nЖду вашего ответа.`;
-        if (!/\?|давайте|согласны|подходит/.test(expertAns)) expertAns += `\n\nСогласны двигаться дальше?`;
-
-        return { soft, businessAns, expertAns };
+        if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(soft)) soft += '\n\nЕсли это звучит для вас разумно, давайте обсудим детали. Как вам такой подход?';
+        if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(business)) business += '\n\nПредлагаю перейти к следующему шагу. Какие вопросы у вас остались?';
+        if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(expert)) expert += '\n\nРекомендую начать с анализа. Когда вам удобно созвониться?';
+        return { soft, business, expert };
     }
 
-    const ctx = { name: clientName, amount, business, hasPriceObj, stage };
-    const drafts = genDraft(lastClient, err, ctx);
+    const drafts = genDraft(lastClient);
 
-    // ---------- ВЫВОД РЕЗУЛЬТАТА (работает) ----------
+    // Отправка на сервер
+    const userId = new URLSearchParams(location.search).get('user_id');
+    fetch('https://saleflow-bot.onrender.com/api/save_analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            user_id: userId,
+            score: score,
+            positives: pos.join(','),
+            negatives: neg.join(',')
+        })
+    }).catch(e => console.error('Ошибка сохранения:', e));
+
     document.getElementById('step-upload').style.display = 'none';
     const container = document.getElementById('step-result');
     container.style.display = 'block';
     const scoreColor = score >= 70 ? 'good' : score >= 40 ? 'medium' : 'bad';
     let posHtml = pos.slice(0, 10).map(p => `<div class="feedback-item positive">${p}</div>`).join('');
     let negHtml = neg.slice(0, 10).map(n => `<div class="feedback-item negative">${n}</div>`).join('');
+    const stage = detectStage(messages);
     const probability = Math.min(90, Math.max(20, Math.round(score * 0.7 + 20)));
 
     container.innerHTML = `
@@ -215,25 +186,30 @@ document.getElementById('analyze-btn').onclick = function() {
         <div style="margin-top:16px;"><strong>📋 Чек-лист для улучшения:</strong><ul style="list-style:none;padding:0;">${neg.slice(0,5).map(n => `<li style="padding:4px 0;border-bottom:1px solid #eee;">☐ ${n.replace('✖ ', '')}</li>`).join('')}</ul></div>
         <div><strong>💬 Лучший ответ</strong><div class="draft-buttons">
             <button data-text="${drafts.soft.replace(/"/g, '&quot;')}">Мягкий</button>
-            <button data-text="${drafts.businessAns.replace(/"/g, '&quot;')}">Деловой</button>
-            <button data-text="${drafts.expertAns.replace(/"/g, '&quot;')}">Экспертный</button>
+            <button data-text="${drafts.business.replace(/"/g, '&quot;')}">Деловой</button>
+            <button data-text="${drafts.expert.replace(/"/g, '&quot;')}" class="${hasSub ? '' : 'expert-locked'}">Экспертный</button>
         </div></div>
         <button onclick="location.reload()" style="background:#e8f2ef;color:#0f2e2a;">🔄 Новый анализ</button>
     `;
 
-    // ---------- ОБРАБОТЧИКИ КОПИРОВАНИЯ (гарантированно работают) ----------
+    // Привязка обработчиков к кнопкам
     document.querySelectorAll('.draft-buttons button').forEach(b => {
         b.onclick = function() {
+            if (this.classList.contains('expert-locked')) {
+                alert('🔒 Экспертный ответ доступен только по подписке.');
+                return;
+            }
             const text = this.dataset.text;
             copyText(text);
         };
     });
 };
 
-// ---------- ФУНКЦИЯ КОПИРОВАНИЯ ----------
 function copyText(t) {
     if (navigator.clipboard) {
-        navigator.clipboard.writeText(t).then(() => alert('✅ Скопировано!')).catch(() => fallbackCopy(t));
+        navigator.clipboard.writeText(t)
+            .then(() => alert('✅ Скопировано!'))
+            .catch(() => fallbackCopy(t));
     } else {
         fallbackCopy(t);
     }
@@ -247,4 +223,4 @@ function fallbackCopy(t) {
     document.execCommand('copy');
     document.body.removeChild(ta);
     alert('✅ Скопировано!');
-                    }
+    }
