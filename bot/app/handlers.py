@@ -2,7 +2,7 @@ import json, uuid, traceback, logging, requests
 from datetime import datetime
 from collections import Counter
 from .config_db import ADMIN_ID, BASE_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, BOT_API
-from .db import db_fetchone, db_fetchall, db_execute, db_execute_lastrowid
+from .config_db import db_fetchone, db_fetchall, db_execute, db_execute_lastrowid
 from .models_referrals import get_sub, create_sub, upsert_user, create_company, get_company_by_user, get_company_members, add_company_member
 from .models_referrals import get_user_balance, apply_referral_bonus, generate_partner_code, get_partner_by_code
 from .utils import send_msg, answer_cb, generate_signed_url, main_menu, tariffs_kb
