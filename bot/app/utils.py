@@ -1,5 +1,5 @@
 import json, hmac, hashlib, time, requests, logging
-from .config_db import BOT_API, SECRET_KEY, WEBAPP_URL, logger
+from .config_db import BOT_API, SECRET_KEY, WEBAPP_URL, ADMIN_ID, logger
 
 def send_msg(chat_id, text, kb=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
@@ -25,10 +25,9 @@ def generate_signed_url(user_id, has_sub):
 def main_menu():
     return {
         "keyboard": [
-            [{"text": "🚀 Новый анализ"}, {"text": "📊 Мой прогресс"}],
+            [{"text": "🚀 Новый анализ"}, {"text": "📊 Статистика"}],
             [{"text": "💎 Тарифы"}, {"text": "👥 B2B"}],
             [{"text": "👥 Пригласить друга"}, {"text": "💰 Баланс"}],
-            [{"text": "📈 Статистика"}, {"text": "💸 Вывести"}],
             [{"text": "❓ Поддержка"}]
         ],
         "resize_keyboard": True
