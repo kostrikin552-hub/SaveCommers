@@ -1,8 +1,7 @@
 import uuid, logging
-from config_db import db_execute, db_fetchone, db_fetchall, logger, ADMIN_ID
-from utils import send_msg
+from .config_db import db_execute, db_fetchone, db_fetchall, logger, ADMIN_ID
+from .utils import send_msg
 
-# ---- Модели ----
 def get_sub(user_id):
     return db_fetchone("SELECT * FROM subscriptions WHERE user_id=? AND is_active=1 AND end_date>datetime('now') ORDER BY end_date DESC", (user_id,))
 
@@ -33,7 +32,6 @@ def get_company_members(company_id):
 def add_company_member(company_id, user_id):
     db_execute("INSERT INTO company_members(company_id,user_id,role) VALUES(?,?,'member')", (company_id, user_id))
 
-# ---- Реферальная система (пользователи) ----
 def apply_referral_bonus(user_id):
     inviter = db_fetchone("SELECT referrer_id FROM users WHERE user_id=?", (user_id,))
     if not inviter or not inviter["referrer_id"]:
@@ -49,7 +47,6 @@ def apply_referral_bonus(user_id):
         send_msg(inviter_id, f"🎉 Ваш друг оплатил подписку! Вам активировано {bonus_days} бесплатных дней.")
     logger.info(f"Реферальный бонус: {inviter_id} получил {bonus_days} дней за пользователя {user_id}")
 
-# ---- Партнёрская программа (денежный процент) ----
 def generate_partner_code(partner_id):
     code = str(uuid.uuid4())[:8].upper()
     db_execute("INSERT INTO partner_links(partner_id,code) VALUES(?,?)", (partner_id, code))
