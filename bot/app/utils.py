@@ -7,7 +7,8 @@ from .config_db import db_fetchall, db_execute, get_sub, create_sub
 
 logger = logging.getLogger(__name__)
 
-def send_msg(chat_id, text, kb=None, bot_token):
+# Исправлено: bot_token идёт перед kb=None
+def send_msg(chat_id, text, bot_token, kb=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     if kb:
         payload["reply_markup"] = json.dumps(kb)
@@ -16,7 +17,8 @@ def send_msg(chat_id, text, kb=None, bot_token):
     except Exception as e:
         logger.error(f"Ошибка отправки сообщения: {e}")
 
-def answer_cb(cb_id, text="", bot_token):
+# Исправлено: bot_token идёт перед text="" (теперь обязательный параметр)
+def answer_cb(cb_id, bot_token, text=""):
     try:
         requests.post(
             f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
@@ -32,7 +34,6 @@ def send_error_to_admin(admin_id, text, bot_token):
         pass
 
 def check_pending_payments(yookassa_shop_id, yookassa_secret_key):
-    """Фоновая проверка статусов платежей"""
     while True:
         try:
             pending = db_fetchall(
@@ -57,7 +58,6 @@ def check_pending_payments(yookassa_shop_id, yookassa_secret_key):
         time.sleep(3600)
 
 def notif_loop(bot_token, admin_id):
-    """Уведомления об истечении подписок"""
     while True:
         try:
             expiring = db_fetchall(
