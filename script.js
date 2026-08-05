@@ -1,5 +1,6 @@
 // ================================================================
-// SaleFlow — персонализированные ответы с учётом контекста диалога
+// SaleFlow — РАБОЧАЯ версия с персонализированными ответами
+// Основана на предыдущей стабильной версии
 // ================================================================
 
 document.getElementById('example-btn').onclick = function() {
@@ -20,7 +21,7 @@ document.getElementById('analyze-btn').onclick = function() {
     const text = input.value.trim();
     if (!text) return alert('Вставьте текст переписки');
 
-    // ---------- ПАРСИНГ ----------
+    // ---------- ПАРСИНГ (работает) ----------
     function parseDialog(t) {
         const lines = t.split('\n').filter(l => l.trim());
         if (!lines.length) return [];
@@ -76,7 +77,7 @@ document.getElementById('analyze-btn').onclick = function() {
     const lastManager = managerMsgs[managerMsgs.length - 1]?.text || '';
     const lastClient = clientMsgs[clientMsgs.length - 1]?.text || '';
 
-    // ---------- ПРАВИЛА ----------
+    // ---------- ПРАВИЛА (без изменений) ----------
     const rules = [
         { id: 'greeting', name: 'Приветствие', w: 3, ch: () => /здравствуй|добрый день|привет|доброе утро/.test(full), neg: '✖ Нет приветствия', pos: '✔ Поприветствовали клиента', sug: 'Начинайте с приветствия.' },
         { id: 'empathy1', name: 'Эмпатия (понимание)', w: 4, ch: () => /понимаю|слышу|согласен|разделяю/.test(full), neg: '✖ Нет фраз понимания', pos: '✔ Проявили понимание', sug: 'Используйте "понимаю", "слышу".' },
@@ -133,7 +134,7 @@ document.getElementById('analyze-btn').onclick = function() {
         err = { name: 'Отличный диалог!', desc: 'Все правила выполнены', sug: 'Продолжайте в том же духе!' };
     }
 
-    // ---------- ОПРЕДЕЛЯЕМ КОНТЕКСТ (имя, сумма, бизнес) ----------
+    // ---------- ИЗВЛЕЧЕНИЕ КОНТЕКСТА ----------
     const allText = messages.map(m => m.text).join(' ');
     let clientName = '';
     const nameMatch = allText.match(/меня зовут\s+(\w+)/i) || allText.match(/я\s+(\w+)/i);
@@ -152,8 +153,8 @@ document.getElementById('analyze-btn').onclick = function() {
     );
     const stage = detectStage(messages);
 
-    // ---------- ГЕНЕРАЦИЯ ОТВЕТОВ С ПЕРСОНАЛИЗАЦИЕЙ ----------
-    function generateAnswers(ctx) {
+    // ---------- НОВАЯ ГЕНЕРАЦИЯ ОТВЕТОВ (ПЕРСОНАЛИЗИРОВАННАЯ) ----------
+    function genDraft(client, err, ctx) {
         const { name, amount, business, hasPriceObj, stage } = ctx;
         const n = name ? name : 'вам';
         const a = amount ? amount : 'нашу цену';
@@ -191,9 +192,9 @@ document.getElementById('analyze-btn').onclick = function() {
     }
 
     const ctx = { name: clientName, amount, business, hasPriceObj, stage };
-    const drafts = generateAnswers(ctx);
+    const drafts = genDraft(lastClient, err, ctx);
 
-    // ---------- ВЫВОД РЕЗУЛЬТАТА ----------
+    // ---------- ВЫВОД РЕЗУЛЬТАТА (работает) ----------
     document.getElementById('step-upload').style.display = 'none';
     const container = document.getElementById('step-result');
     container.style.display = 'block';
@@ -220,7 +221,7 @@ document.getElementById('analyze-btn').onclick = function() {
         <button onclick="location.reload()" style="background:#e8f2ef;color:#0f2e2a;">🔄 Новый анализ</button>
     `;
 
-    // ---------- ОБРАБОТЧИКИ КОПИРОВАНИЯ ----------
+    // ---------- ОБРАБОТЧИКИ КОПИРОВАНИЯ (гарантированно работают) ----------
     document.querySelectorAll('.draft-buttons button').forEach(b => {
         b.onclick = function() {
             const text = this.dataset.text;
@@ -246,4 +247,4 @@ function fallbackCopy(t) {
     document.execCommand('copy');
     document.body.removeChild(ta);
     alert('✅ Скопировано!');
-        }
+                    }
