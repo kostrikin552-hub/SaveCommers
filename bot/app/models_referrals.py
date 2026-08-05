@@ -32,50 +32,73 @@ def get_company_members(company_id):
 def add_company_member(company_id, user_id):
     db_execute("INSERT INTO company_members(company_id,user_id,role) VALUES(?,?,'member')", (company_id, user_id))
 
-def apply_referral_bonus(user_id):
-    inviter = db_fetchone("SELECT referrer_id FROM users WHERE user_id=?", (user_id,))
-    if not inviter or not inviter["referrer_id"]:
-        return
-    inviter_id = inviter["referrer_id"]
-    bonus_days = 6
-    current_sub = get_sub(inviter_id)
-    if current_sub:
-        db_execute("UPDATE subscriptions SET end_date = datetime(end_date, '+' || ? || ' days') WHERE user_id=? AND is_active=1", (bonus_days, inviter_id))
-        send_msg(inviter_id, f"🎉 Ваш друг оплатил подписку! Вы получили +{bonus_days} дней (20% от 30 дней).")
-    else:
-        create_sub(inviter_id, "bonus", bonus_days)
-        send_msg(inviter_id, f"🎉 Ваш друг оплатил подписку! Вам активировано {bonus_days} бесплатных дней.")
-    logger.info(f"Реферальный бонус: {inviter_id} получил {bonus_days} дней за пользователя {user_id}")
-
-def generate_partner_code(partner_id):
-    code = str(uuid.uuid4())[:8].upper()
-    db_execute("INSERT INTO partner_links(partner_id,code) VALUES(?,?)", (partner_id, code))
-    return code
-
-def get_partner_by_code(code):
-    link = db_fetchone("SELECT partner_id FROM partner_links WHERE code=?", (code,))
-    if link:
-        return db_fetchone("SELECT * FROM partners WHERE id=?", (link["partner_id"],))
-    return None
-
 def get_user_balance(user_id):
     row = db_fetchone("SELECT balance FROM user_balances WHERE user_id=?", (user_id,))
     return row["balance"] if row else 0
 
-def apply_partner_bonus(user_id, payment_id, amount_cents):
-    lead = db_fetchone("SELECT partner_id FROM partner_leads WHERE user_id=?", (user_id,))
-    if not lead:
+def apply_referral_bonus(user_id, payment_id, amount_cents):
+    inviter = db_fetchone("SELECT referrer_id FROM users WHERE user_id=?", (user_id,))
+    if not inviter or not inviter["referrer_id"]:
         return
-    partner_id = lead["partner_id"]
-    existing = db_fetchone("SELECT id FROM partner_bonus_history WHERE payment_id=? AND partner_id=?", (payment_id, partner_id))
-    if existing:
-        return
+    inviter_id = inviter["referrer_id"]
+    bonus_days = 5
+
+    current_sub = get_sub(inviter_id)
+    if current_sub:
+        db_execute("UPDATE subscriptions SET end_date = datetime(end_date, '+' || ? || ' days') WHERE user_id=? AND is_active=1", (bonus_days, inviter_id))
+        send_msg(inviter_id, f"🎉 Ваш друг оплатил подписку! Вы получили +{bonus_days} дней (продление).")
+    else:
+        create_sub(inviter_id, "bonus", bonus_days)
+        send_msg(inviter_id, f"🎉 Ваш друг оплатил подписку! Вам активировано {bonus_days} бесплатных дней.")
+
     bonus_percent = 20
     bonus_cents = int(amount_cents * bonus_percent / 100)
-    if bonus_cents == 0:
-        return
-    db_execute("UPDATE partners SET balance = balance + ? WHERE id=?", (bonus_cents, partner_id))
-    db_execute("INSERT INTO partner_bonus_history(partner_id,user_id,payment_id,amount_cents) VALUES(?,?,?,?)", (partner_id, user_id, payment_id, bonus_cents))
-    partner = db_fetchone("SELECT name FROM partners WHERE id=?", (partner_id,))
-    send_msg(ADMIN_ID, f"💰 Партнёр {partner['name']} получил {bonus_cents/100:.2f}₽ (20%) за платёж {payment_id} от пользователя {user_id}")
-    logger.info(f"Партнёр {partner_id} получил {bonus_cents/100:.2f}₽ за платёж {payment_id}")
+    if bonus_cents > 0:
+        db_execute("INSERT INTO user_balances(user_id, balance) VALUES(?, ?) ON CONFLICT(user_id) DO UPDATE SET balance = balance + ?", (inviter_id, bonus_cents, bonus_cents))
+        send_msg(inviter_id, f"💰 На ваш баланс зачислено {bonus_cents/100:.2f}₽ (20% от оплаты друга). Текущий баланс: {get_user_balance(inviter_id)/100:.2f}₽")
+
+    logger.info(f"Реферальный бонус: {inviter_id} получил {bonus_days} дней и {bonus_cents/100:.2f}₽ за пользователя {user_id} (платёж {payment_id})")
+
+# ---- Вывод средств ----
+def withdraw_balance(user_id, amount_cents):
+    current = get_user_balance(user_id)
+    if current < amount_cents:
+        return False
+    db_execute("UPDATE user_balances SET balance = balance - ? WHERE user_id = ?", (amount_cents, user_id))
+    return True
+
+def use_balance_for_subscription(user_id, amount_cents):
+    return withdraw_balance(user_id, amount_cents)
+
+def create_withdraw_request(user_id, amount_cents, details):
+    db_execute('''CREATE TABLE IF NOT EXISTS withdraw_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        amount_cents INTEGER,
+        details TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    db_execute("INSERT INTO withdraw_requests(user_id, amount_cents, details, status) VALUES(?, ?, ?, 'pending')", (user_id, amount_cents, details))
+
+def get_pending_withdraw_requests():
+    db_execute('''CREATE TABLE IF NOT EXISTS withdraw_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        amount_cents INTEGER,
+        details TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    return db_fetchall("SELECT * FROM withdraw_requests WHERE status='pending' ORDER BY created_at")
+
+def approve_withdraw_request(request_id):
+    req = db_fetchone("SELECT * FROM withdraw_requests WHERE id=?", (request_id,))
+    if not req:
+        return False
+    if req["status"] != "pending":
+        return False
+    if withdraw_balance(req["user_id"], req["amount_cents"]):
+        db_execute("UPDATE withdraw_requests SET status='completed' WHERE id=?", (request_id,))
+        return True
+    return False
