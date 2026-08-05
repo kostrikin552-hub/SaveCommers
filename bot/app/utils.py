@@ -1,5 +1,5 @@
 import json, hmac, hashlib, time, requests, logging
-from config_db import BOT_API, SECRET_KEY, WEBAPP_URL, logger
+from .config_db import BOT_API, SECRET_KEY, WEBAPP_URL, logger
 
 def send_msg(chat_id, text, kb=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
