@@ -1,5 +1,5 @@
 import uuid, logging
-from .config_db import db_execute, db_fetchone, db_fetchall, logger, ADMIN_ID
+from .config_db import db_execute, db_fetchone, db_fetchall, db_execute_lastrowid, ADMIN_ID, logger
 from .utils import send_msg
 
 def get_sub(user_id):
