@@ -163,19 +163,33 @@ def process_update(update):
             elif text == "💎 Тарифы":
                 send_msg(chat_id, "💰 Выбери тариф:\n🔓 Pro 990₽/мес\n👑 Premium 1990₽/мес\n🏢 B2B 4990₽/мес", tariffs_kb())
 
-            elif text == "📊 Мой прогресс":
-                sub = get_sub(user_id)
-                history = db_fetchall("SELECT * FROM analysis_history WHERE user_id=? ORDER BY created_at DESC LIMIT 5", (user_id,))
-                if sub:
-                    ans = f"📈 Тариф: {sub['plan_type'].upper()}\nДо: {sub['end_date']}\n"
-                else:
-                    ans = "📈 Нет активной подписки\n"
-                if history:
-                    ans += "Последние анализы:\n"
-                    for h in history:
-                        ans += f"• {h['created_at'][:10]}: {h['score']}/100\n"
-                else:
-                    ans += "Нет истории"
+            elif text == "📊 Статистика":
+                history = db_fetchall("SELECT * FROM analysis_history WHERE user_id=? ORDER BY created_at DESC", (user_id,))
+                if not history:
+                    send_msg(chat_id, "📊 У вас пока нет анализов. Проведите первый анализ!", main_menu())
+                    return
+                total = len(history)
+                avg_score = sum(h["score"] for h in history) / total
+                positives, negatives = [], []
+                for h in history:
+                    if h["positives"]:
+                        positives.extend(h["positives"].split(','))
+                    if h["negatives"]:
+                        negatives.extend(h["negatives"].split(','))
+                pos_counter = Counter(positives)
+                neg_counter = Counter(negatives)
+                top_pos = pos_counter.most_common(3)
+                top_neg = neg_counter.most_common(3)
+                ans = f"📊 <b>Ваша статистика</b>\n\n"
+                ans += f"📌 Всего анализов: {total}\n"
+                ans += f"📈 Средний балл: {avg_score:.1f}/100\n\n"
+                ans += f"✅ <b>Лучшие навыки:</b>\n"
+                ans += f"{', '.join([p[0] for p in top_pos]) if top_pos else '—'}\n\n"
+                ans += f"❌ <b>Что улучшить:</b>\n"
+                ans += f"{', '.join([n[0] for n in top_neg]) if top_neg else '—'}\n\n"
+                ans += f"<b>📋 Последние 5 анализов:</b>\n"
+                for h in history[:5]:
+                    ans += f"• {h['created_at'][:10]}: {h['score']}/100\n"
                 send_msg(chat_id, ans, main_menu())
 
             elif text == "👥 B2B":
@@ -205,39 +219,14 @@ def process_update(update):
 
             elif text == "💰 Баланс" or text == "/balance":
                 balance = get_user_balance(user_id)
-                send_msg(chat_id, f"💰 Ваш реферальный баланс: {balance/100:.2f}₽\n\nВы можете вывести средства, когда баланс достигнет 500₽.", main_menu())
-
-            elif text == "💸 Вывести" or text == "/withdraw":
-                balance = get_user_balance(user_id)
-                if balance < 50000:
-                    send_msg(chat_id, f"💳 Минимальная сумма для вывода — 500₽. Ваш баланс: {balance/100:.2f}₽.\nПродолжайте приглашать друзей!", main_menu())
-                    return
-                user_states[user_id] = 'withdraw_amount'
-                send_msg(chat_id, f"💰 Ваш баланс: {balance/100:.2f}₽\nВведите сумму для вывода (минимум 500₽):")
-
-            elif text == "📈 Статистика":
-                history = db_fetchall("SELECT * FROM analysis_history WHERE user_id=? ORDER BY created_at DESC", (user_id,))
-                if not history:
-                    send_msg(chat_id, "📊 У вас пока нет анализов. Проведите первый анализ!", main_menu())
-                    return
-                total = len(history)
-                avg_score = sum(h["score"] for h in history) / total
-                positives, negatives = [], []
-                for h in history:
-                    if h["positives"]:
-                        positives.extend(h["positives"].split(','))
-                    if h["negatives"]:
-                        negatives.extend(h["negatives"].split(','))
-                pos_counter = Counter(positives)
-                neg_counter = Counter(negatives)
-                top_pos = pos_counter.most_common(3)
-                top_neg = neg_counter.most_common(3)
-                ans = f"📊 Ваша статистика:\n"
-                ans += f"• Всего анализов: {total}\n"
-                ans += f"• Средний балл: {avg_score:.1f}\n"
-                ans += f"• Лучшие навыки: {', '.join([p[0] for p in top_pos]) if top_pos else '—'}\n"
-                ans += f"• Что улучшить: {', '.join([n[0] for n in top_neg]) if top_neg else '—'}\n"
-                send_msg(chat_id, ans, main_menu())
+                text = f"💰 Ваш реферальный баланс: {balance/100:.2f}₽"
+                if balance >= 50000:
+                    kb = {"inline_keyboard": [[{"text": "💸 Вывести средства", "callback_data": "withdraw_start"}]]}
+                    text += "\n\nВы можете вывести средства, нажав на кнопку ниже."
+                    send_msg(chat_id, text, kb)
+                else:
+                    text += f"\n\n💳 Для вывода необходимо накопить 500₽. Осталось: {(50000 - balance)/100:.2f}₽"
+                    send_msg(chat_id, text, main_menu())
 
             elif text == "❓ Поддержка":
                 send_msg(chat_id, "📩 Напиши сообщение, я перешлю его @LyokhaPatron", {"inline_keyboard": [[{"text": "Написать", "callback_data": "support"}]]})
@@ -339,6 +328,17 @@ def process_update(update):
                     send_msg(chat_id, "❌ Ошибка: попробуйте начать вывод заново командой /withdraw")
                 answer_cb(cb["id"], "")
 
+            # ---------- Вывод (запуск из баланса) ----------
+            elif data == "withdraw_start":
+                balance = get_user_balance(user_id)
+                if balance < 50000:
+                    send_msg(chat_id, f"❌ Недостаточно средств. Ваш баланс: {balance/100:.2f}₽. Минимум 500₽.")
+                    answer_cb(cb["id"], "")
+                    return
+                user_states[user_id] = 'withdraw_amount'
+                send_msg(chat_id, f"💰 Ваш баланс: {balance/100:.2f}₽\nВведите сумму для вывода (минимум 500₽):")
+                answer_cb(cb["id"], "")
+
             # ---------- Тарифы ----------
             elif data.startswith("tariff_"):
                 plan = data.replace("tariff_", "")
@@ -355,7 +355,6 @@ def process_update(update):
                     }
                     send_msg(chat_id, f"💰 У вас на балансе {balance/100:.2f}₽. Вы можете оплатить подписку {plan} за {amount}₽ из баланса или картой.", kb)
                 else:
-                    # Обычный процесс оплаты картой
                     payment_id = str(uuid.uuid4())
                     url = "https://api.yookassa.ru/v3/payments"
                     auth = (YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
