@@ -2,7 +2,7 @@ import time, threading, logging
 from datetime import datetime, timedelta
 from .config_db import db_fetchall, db_execute, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, logger
 from .utils import send_msg, send_error_to_admin
-from .models_referrals import create_sub, apply_referral_bonus, apply_partner_bonus
+from .models_referrals import create_sub, apply_referral_bonus
 import requests
 
 def check_pending_payments():
@@ -20,8 +20,7 @@ def check_pending_payments():
                     if status == "succeeded":
                         db_execute("UPDATE payments SET status='succeeded' WHERE payment_id=?", (payment_id,))
                         create_sub(payment["user_id"], payment["plan_type"], 30)
-                        apply_referral_bonus(payment["user_id"])
-                        apply_partner_bonus(payment["user_id"], payment_id, payment["amount"])
+                        apply_referral_bonus(payment["user_id"], payment_id, payment["amount"])
                     elif status in ("canceled", "expired"):
                         db_execute("UPDATE payments SET status='failed' WHERE payment_id=?", (payment_id,))
         except Exception as e:
