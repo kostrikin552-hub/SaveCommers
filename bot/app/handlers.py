@@ -354,4 +354,70 @@ def process_update(update):
                         ]
                     }
                     send_msg(chat_id, f"💰 У вас на балансе {balance/100:.2f}₽. Вы можете оплатить подписку {plan} за {amount}₽ из баланса или картой.", kb)
+                                else:
+                    # Обычный процесс оплаты картой
+                    payment_id = str(uuid.uuid4())
+                    url = "https://api.yookassa.ru/v3/payments"
+                    auth = (YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
+                    resp = requests.post(url, json={
+                        "amount": {"value": f"{amount:.2f}", "currency": "RUB"},
+                        "confirmation": {"type": "redirect", "return_url": f"{BASE_URL}/payment-success"},
+                        "capture": True,
+                        "description": f"SaleFlow {plan}",
+                        "metadata": {"user_id": user_id, "plan_type": plan}
+                    }, auth=auth, headers={"Idempotence-Key": payment_id, "Content-Type": "application/json"})
+                    if resp.status_code in (200, 201):
+                        r = resp.json()
+                        db_execute("INSERT INTO payments(user_id,payment_id,amount,currency,status,plan_type) VALUES(?,?,?,'RUB','pending',?)", (user_id, r["id"], amount_cents, plan))
+                        kb = {"inline_keyboard": [[{"text": "💳 Оплатить", "url": r["confirmation"]["confirmation_url"]}]]}
+                        send_msg(chat_id, f"💳 Оплата {plan}: {amount}₽", kb)
+                    else:
+                        send_msg(chat_id, "❌ Ошибка оплаты")
+                answer_cb(cb["id"], "")
+
+            elif data.startswith("pay_balance_"):
+                plan = data.replace("pay_balance_", "")
+                amount = {"pro": 990, "premium": 1990, "b2b": 4990}[plan]
+                amount_cents = amount * 100
+                if use_balance_for_subscription(user_id, amount_cents):
+                    create_sub(user_id, plan, 30)
+                    send_msg(chat_id, f"✅ Подписка {plan} активирована на 30 дней за счёт баланса! Остаток: {get_user_balance(user_id)/100:.2f}₽")
                 else:
+                    send_msg(chat_id, "❌ Недостаточно средств на балансе")
+                answer_cb(cb["id"], "")
+
+            elif data.startswith("pay_card_"):
+                plan = data.replace("pay_card_", "")
+                amount = {"pro": 990, "premium": 1990, "b2b": 4990}[plan]
+                amount_cents = amount * 100
+                payment_id = str(uuid.uuid4())
+                url = "https://api.yookassa.ru/v3/payments"
+                auth = (YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
+                resp = requests.post(url, json={
+                    "amount": {"value": f"{amount:.2f}", "currency": "RUB"},
+                    "confirmation": {"type": "redirect", "return_url": f"{BASE_URL}/payment-success"},
+                    "capture": True,
+                    "description": f"SaleFlow {plan}",
+                    "metadata": {"user_id": user_id, "plan_type": plan}
+                }, auth=auth, headers={"Idempotence-Key": payment_id, "Content-Type": "application/json"})
+                if resp.status_code in (200, 201):
+                    r = resp.json()
+                    db_execute("INSERT INTO payments(user_id,payment_id,amount,currency,status,plan_type) VALUES(?,?,?,'RUB','pending',?)", (user_id, r["id"], amount_cents, plan))
+                    kb = {"inline_keyboard": [[{"text": "💳 Оплатить", "url": r["confirmation"]["confirmation_url"]}]]}
+                    send_msg(chat_id, f"💳 Оплата {plan}: {amount}₽", kb)
+                else:
+                    send_msg(chat_id, "❌ Ошибка оплаты")
+                answer_cb(cb["id"], "")
+
+    except Exception as e:
+        error_text = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+        logger.error(error_text)
+        send_msg(ADMIN_ID, f"🚨 Ошибка: {error_text[:4000]}")
+
+def get_updates(offset):
+    r = requests.get(f"{BOT_API}/getUpdates", params={"offset": offset, "timeout": 30})
+    if r.status_code == 200 and r.json()["ok"]:
+        for u in r.json()["result"]:
+            offset = u["update_id"] + 1
+            process_update(u)
+    return offset
