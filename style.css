@@ -262,16 +262,16 @@ body {
     margin-bottom: 20px;
 }
 
-.score-number {
+.score {
     font-size: 56px;
     font-weight: 800;
     line-height: 1.1;
     letter-spacing: -1px;
 }
 
-.score-number.good { color: var(--success); }
-.score-number.medium { color: var(--warning); }
-.score-number.bad { color: var(--danger); }
+.score.good { color: var(--success); }
+.score.medium { color: var(--warning); }
+.score.bad { color: var(--danger); }
 
 .score-label {
     font-size: 16px;
@@ -280,7 +280,7 @@ body {
 }
 
 /* Карточки */
-.result-card {
+.error-box, .suggestion-box {
     background: var(--tg-secondary-bg);
     border-radius: 12px;
     padding: 16px 18px;
@@ -289,11 +289,10 @@ body {
     transition: background var(--transition);
 }
 
-.result-card.error { border-left-color: var(--danger); }
-.result-card.success { border-left-color: var(--success); }
-.result-card.warning { border-left-color: var(--warning); }
+.error-box { border-left-color: var(--danger); }
+.suggestion-box { border-left-color: var(--success); }
 
-.result-card .card-title {
+.error-box strong, .suggestion-box strong {
     font-weight: 700;
     font-size: 16px;
     display: flex;
@@ -303,75 +302,39 @@ body {
     color: var(--tg-text);
 }
 
-.result-card .card-text {
+.error-box p, .suggestion-box p {
     font-size: 15px;
     color: var(--tg-text);
     line-height: 1.6;
 }
 
-.result-card .card-text .highlight {
-    font-weight: 600;
-    color: var(--primary);
-}
-
 /* Списки */
-.list-section {
-    margin: 16px 0 20px 0;
-}
-
-.list-section .list-title {
-    font-weight: 700;
-    font-size: 16px;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--tg-text);
-}
-
-.list-items {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.list-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
+.feedback-item {
+    padding: 6px 12px;
+    margin: 4px 0;
+    border-radius: 8px;
     font-size: 15px;
-    padding: 4px 0;
-    color: var(--tg-text);
-    line-height: 1.5;
 }
 
-.list-item .icon {
-    flex-shrink: 0;
-    margin-top: 2px;
-    font-size: 16px;
+.feedback-item.positive {
+    background: #e3f5ec;
+    color: #0f4a3f;
 }
 
-.list-item.positive .icon { color: var(--success); }
-.list-item.negative .icon { color: var(--danger); }
+.feedback-item.negative {
+    background: #fde8e8;
+    color: #a93226;
+}
 
 /* Блок готовых ответов */
-.drafts-title {
-    font-weight: 700;
-    font-size: 17px;
-    margin: 20px 0 12px 0;
-    color: var(--tg-text);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
 .draft-buttons {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
+    margin-top: 8px;
 }
 
-.draft-btn {
+.draft-buttons button {
     flex: 1 1 30%;
     min-width: 100px;
     padding: 14px 12px;
@@ -386,38 +349,39 @@ body {
     text-align: center;
 }
 
-.draft-btn:active {
+.draft-buttons button:active {
     transform: scale(0.96);
 }
 
-.draft-btn.soft {
+/* Цвета кнопок ответов (скрипт добавляет классы soft, business, expert) */
+.draft-buttons button.soft {
     border-color: var(--success);
     color: var(--success);
 }
-.draft-btn.soft:hover {
+.draft-buttons button.soft:hover {
     background: var(--success);
     color: #fff;
 }
 
-.draft-btn.business {
+.draft-buttons button.business {
     border-color: var(--primary);
     color: var(--primary);
 }
-.draft-btn.business:hover {
+.draft-buttons button.business:hover {
     background: var(--primary);
     color: #fff;
 }
 
-.draft-btn.expert {
+.draft-buttons button.expert {
     border-color: var(--accent);
     color: var(--accent);
 }
-.draft-btn.expert:hover {
+.draft-buttons button.expert:hover {
     background: var(--accent);
     color: #fff;
 }
 
-.draft-btn.expert-locked {
+.draft-buttons button.expert-locked {
     opacity: 0.5;
     pointer-events: none;
     border-color: var(--gray-500);
@@ -425,22 +389,29 @@ body {
     position: relative;
 }
 
-.draft-btn.expert-locked::after {
+.draft-buttons button.expert-locked::after {
     content: '🔒';
     margin-left: 6px;
     font-size: 14px;
 }
 
-/* Кнопки внизу */
-.action-buttons {
-    margin-top: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+/* Другие кнопки в результатах */
+.share-btn {
+    background: #2d7a6b;
+    color: #fff;
+    border: none;
+    padding: 14px;
+    width: 100%;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 12px;
+    transition: background var(--transition);
 }
 
-.action-buttons .btn-secondary {
-    margin-top: 0;
+.share-btn:active {
+    transform: scale(0.97);
 }
 
 /* Toast-уведомление */
@@ -503,10 +474,10 @@ body {
     .step-title {
         font-size: 22px;
     }
-    .score-number {
+    .score {
         font-size: 44px;
     }
-    .draft-btn {
+    .draft-buttons button {
         flex: 1 1 100%;
     }
     .template-chip {
@@ -528,7 +499,7 @@ body {
 }
 
 /* ============================================================
-   ТЁМНАЯ ТЕМА (корректировки на случай, если Telegram не передаёт переменные)
+   ТЁМНАЯ ТЕМА (корректировки)
    ============================================================ */
 @media (prefers-color-scheme: dark) {
     :root {
@@ -541,10 +512,27 @@ body {
         --gray-200: #3a3a3c;
         --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
     }
+    .feedback-item.positive {
+        background: #1e3a2a;
+        color: #8fc9a8;
+    }
+    .feedback-item.negative {
+        background: #3a1e1e;
+        color: #f5a0a0;
+    }
     .template-chip:hover {
         background: var(--primary-light);
     }
     .btn-secondary:hover {
         background: #3a3a3c;
     }
-}
+    .draft-buttons button.soft:hover {
+        background: var(--success);
+    }
+    .draft-buttons button.business:hover {
+        background: var(--primary);
+    }
+    .draft-buttons button.expert:hover {
+        background: var(--accent);
+    }
+   }
