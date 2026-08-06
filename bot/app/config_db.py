@@ -4,7 +4,9 @@ import threading
 import uuid
 import hmac
 import hashlib
+import math
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
 DB_PATH = "data.db"
 db_lock = threading.Lock()
@@ -156,20 +158,34 @@ def db_execute_lastrowid(q, p=()):
             conn.close()
 
 def get_sub(user_id):
-    return db_fetchone(
-        "SELECT * FROM subscriptions WHERE user_id = ? AND is_active = 1 AND end_date > datetime('now') ORDER BY end_date DESC",
-        (user_id,)
-    )
+    return db_fetchone("""
+        SELECT *
+        FROM subscriptions
+        WHERE user_id = ?
+          AND is_active = 1
+          AND datetime(end_date) > datetime('now')
+        ORDER BY datetime(end_date) DESC
+        LIMIT 1
+    """, (user_id,))
 
 def create_sub(user_id, plan, days):
+    db_execute("UPDATE subscriptions SET is_active = 0 WHERE user_id = ?", (user_id,))
     now = datetime.now(timezone.utc)
     start_date = now.strftime("%Y-%m-%d %H:%M:%S")
     end_date = (now + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
-    db_execute("UPDATE subscriptions SET is_active = 0 WHERE user_id = ?", (user_id,))
     db_execute(
         "INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (?, ?, 'active', ?, ?, 1)",
         (user_id, plan, start_date, end_date)
     )
+
+def days_left(sub):
+    if not sub:
+        return 0
+    end_dt = datetime.strptime(sub['end_date'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    delta = end_dt - datetime.now(timezone.utc)
+    if delta.total_seconds() <= 0:
+        return 0
+    return int(math.ceil(delta.total_seconds() / 86400))
 
 def upsert_user(user_id, username, first_name, last_name):
     db_execute(
@@ -193,11 +209,18 @@ def create_company(owner_id, name):
     )
     return {"id": company_id, "invite_code": code}
 
-def generate_signed_url(user_id, has_sub, secret_key, webapp_url):
+def generate_signed_url(user_id, has_sub, secret_key, webapp_url, backend_url):
     timestamp = int(time.time())
     payload = f"{user_id}:{timestamp}:{has_sub}"
     signature = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return f"{webapp_url}?user_id={user_id}&ts={timestamp}&sub={has_sub}&sig={signature}"
+    params = {
+        "user_id": user_id,
+        "ts": timestamp,
+        "sub": has_sub,
+        "sig": signature,
+        "backend_url": backend_url
+    }
+    return f"{webapp_url}?{urlencode(params)}"
 
 def main_menu():
     return {
@@ -215,7 +238,6 @@ def tariffs_kb(user_id=None):
         [{"text": "👑 Premium 1990₽/мес", "callback_data": "tariff_premium"}],
         [{"text": "🏢 B2B 4990₽/мес (до 10 чел)", "callback_data": "tariff_b2b"}]
     ]
-    # Показываем кнопку триала только если пользователь ещё не активировал его
     if user_id:
         trial_used = db_fetchone("SELECT 1 FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
         if not trial_used:
