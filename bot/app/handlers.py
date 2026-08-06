@@ -268,7 +268,7 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
 
             elif text == '❓ Поддержка':
                 kb = {'inline_keyboard': [[{'text': 'Написать', 'callback_data': 'support'}]]}
-                send_msg(chat_id, '📩 Напиши сообщение, я перешлю его @LyokhaPatron', bot_token=bot_token, kb=kb)
+                send_msg(chat_id, '📩 Напиши сообщение, я перешлю его администратору. Ответ придёт от бота.', bot_token=bot_token, kb=kb)
 
             elif text.startswith('/'):
                 if user_id == admin_id:
