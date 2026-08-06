@@ -1,54 +1,67 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>SaleFlow — анализ</title>
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:system-ui;background:#f0f9f6;padding:16px}
-        #app{max-width:600px;margin:auto;background:#fff;padding:24px;border-radius:24px;box-shadow:0 8px 30px rgba(0,0,0,0.08)}
-        h1{color:#0f2e2a;font-size:28px;margin-bottom:16px}
-        textarea{width:100%;padding:12px;border-radius:12px;border:2px solid #d1e8e2;min-height:140px;font-size:15px;resize:vertical}
-        button{background:#1a6b5a;color:#fff;border:none;padding:14px;width:100%;border-radius:12px;font-size:16px;cursor:pointer;margin-top:8px;font-weight:600}
-        .btn-secondary{background:#e8f2ef;color:#0f2e2a}
-        .score{font-size:48px;text-align:center;font-weight:700}
-        .good{color:#1a6b5a}
-        .medium{color:#c47b2e}
-        .bad{color:#c0392b}
-        .error-box{background:#fdf0ee;padding:12px;border-radius:8px;margin:12px 0;border-left:4px solid #c0392b}
-        .suggestion-box{background:#eaf7f2;padding:12px;border-radius:8px;margin:12px 0;border-left:4px solid #1a6b5a}
-        .feedback-item{padding:6px 12px;margin:4px 0;border-radius:8px}
-        .positive{background:#eaf7f2;color:#0f4a3f}
-        .negative{background:#fdf0ee;color:#a93226}
-        .draft-buttons{display:flex;gap:8px;flex-wrap:wrap}
-        .draft-buttons button{flex:1;min-width:80px;background:#e8f2ef;color:#0f2e2a;padding:10px}
-        .expert-locked{opacity:0.5;cursor:not-allowed}
-        .info-box{background:#eaf7f2;padding:12px;border-radius:8px;margin-bottom:12px;font-size:14px}
-        .template-select{width:100%;padding:8px;border-radius:8px;border:1px solid #d1e8e2;margin-bottom:8px}
-        .share-btn{background:#2d7a6b;margin-top:4px}
-    </style>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<div id="app">
-    <h1>🌊 SaleFlow</h1>
-    <div id="step-upload">
-        <div class="info-box">
-            <strong>📌 Как вставить переписку:</strong> Используй «Клиент:» и «Вы:» перед каждой репликой — это даст максимальную точность. Или просто чередуй строки: первая — клиент, вторая — вы.
+
+    <div id="app">
+        <!-- ШАПКА -->
+        <div class="app-header">
+            <div class="logo">
+                <span>🌊</span> SaleFlow
+            </div>
+            <div class="badge" id="subscription-badge">Бесплатно</div>
         </div>
-        <select id="template-select" class="template-select">
-            <option value="">— Выберите шаблон диалога —</option>
-            <option value="ecommerce">Интернет-магазин</option>
-            <option value="services">Услуги (консалтинг)</option>
-            <option value="b2b">B2B-продажи</option>
-            <option value="cold">Холодный контакт</option>
-        </select>
-        <textarea id="dialog-input" rows="6" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?"></textarea>
-        <button id="analyze-btn">🔍 Анализировать</button>
-        <button id="example-btn" class="btn-secondary" style="margin-top:4px;">📋 Вставить пример</button>
+
+        <!-- ЭКРАН 1: ВВОД ДИАЛОГА -->
+        <div id="step-upload">
+            <h2 class="step-title">Вставьте диалог с клиентом</h2>
+            <p class="step-subtitle">Мы проанализируем его по 30 критериям и покажем, где вы теряете клиентов.</p>
+
+            <textarea id="dialog-input" class="dialog-textarea" rows="6" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?"></textarea>
+
+            <span class="templates-label">Или выберите шаблон:</span>
+            <div class="templates-scroll">
+                <button class="template-chip" data-template="ecommerce">🛍️ E‑commerce</button>
+                <button class="template-chip" data-template="services">💼 Услуги</button>
+                <button class="template-chip" data-template="b2b">🏢 B2B</button>
+                <button class="template-chip" data-template="cold">❄️ Холодный контакт</button>
+            </div>
+
+            <button id="analyze-btn" class="btn-primary">🔍 Анализировать</button>
+            <button id="example-btn" class="btn-secondary">📋 Вставить пример</button>
+
+            <div class="footer-note">⏱️ Анализ до 60 секунд • Результаты сохраняются</div>
+        </div>
+
+        <!-- ЭКРАН 2: РЕЗУЛЬТАТЫ (скрыт) -->
+        <div id="step-result" class="hidden">
+            <!-- сюда вставляется результат через JS -->
+        </div>
+
+        <!-- TOAST-УВЕДОМЛЕНИЕ -->
+        <div id="toast" class="toast">✅ Скопировано!</div>
     </div>
-    <div id="step-result" style="display:none;"></div>
-</div>
-<script src="script.js"></script>
+
+    <script src="script.js"></script>
+    <script>
+        // Обновление бейджа подписки (по параметру sub)
+        (function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const hasSub = urlParams.get('sub') === '1';
+            const badge = document.getElementById('subscription-badge');
+            if (hasSub) {
+                badge.textContent = '⭐ Pro';
+                badge.style.borderColor = '#f5a623';
+                badge.style.color = '#f5a623';
+            }
+        })();
+    </script>
+
 </body>
 </html>
