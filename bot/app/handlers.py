@@ -20,30 +20,24 @@ from .utils import send_msg, answer_cb, send_error_to_admin, notify_admin_withdr
 
 logger = logging.getLogger(__name__)
 
-# Состояния с временем установки (для автоматического сброса)
-user_states = {}        # user_id -> (state, timestamp)
-withdraw_data = {}      # user_id -> dict с данными вывода
-STATE_TIMEOUT = 600     # 10 минут
+user_states = {}
+withdraw_data = {}
+STATE_TIMEOUT = 600
 
 def is_sub_active(user_id):
-    """Проверяет, есть ли у пользователя активная подписка (is_active=1 и end_date > now)"""
     sub = get_sub(user_id)
     if not sub:
         return False
-    # get_sub уже проверяет end_date > datetime('now'), но дополнительно проверим is_active
     return sub.get('is_active') == 1
 
 def safe_html(text):
-    """Экранирует текст для безопасного использования в HTML-разметке Telegram"""
     return html.escape(str(text))
 
 def clear_state(user_id):
-    """Удаляет состояние и данные вывода для пользователя"""
     user_states.pop(user_id, None)
     withdraw_data.pop(user_id, None)
 
 def get_state(user_id):
-    """Возвращает состояние и время, если оно есть и не истекло"""
     entry = user_states.get(user_id)
     if entry:
         state, timestamp = entry
@@ -54,21 +48,14 @@ def get_state(user_id):
     return None
 
 def set_state(user_id, state):
-    """Устанавливает состояние с текущим временем"""
     user_states[user_id] = (state, time.time())
 
-# ----------------------------------------------------------------------------
-# Вспомогательные функции для состояний
-# ----------------------------------------------------------------------------
-
 def handle_company_states(user_id, chat_id, text, bot_token):
-    """Обработка состояний создания/вступления в компанию"""
     state = get_state(user_id)
     if state == 'creating_company':
-        # Если текст начинается с "/" — сбрасываем состояние и выходим
         if text.startswith('/'):
             clear_state(user_id)
-            send_msg(chat_id, "❌ Действие отменено. Вы можете начать заново.", bot_token=bot_token)
+            send_msg(chat_id, "❌ Действие отменено.", bot_token=bot_token)
             return True
         name = text.strip()
         if len(name) < 2:
@@ -76,17 +63,15 @@ def handle_company_states(user_id, chat_id, text, bot_token):
             return True
         res = create_company(user_id, name)
         if res:
-            safe_code = safe_html(res['invite_code'])
-            send_msg(chat_id, f"🏢 Компания «{safe_html(name)}» создана! Код: <code>{safe_code}</code>", bot_token=bot_token)
+            send_msg(chat_id, f"🏢 Компания «{safe_html(name)}» создана! Код: <code>{safe_html(res['invite_code'])}</code>", bot_token=bot_token)
         else:
             send_msg(chat_id, "❌ Ошибка", bot_token=bot_token)
         clear_state(user_id)
         return True
-
     if state == 'joining_company':
         if text.startswith('/'):
             clear_state(user_id)
-            send_msg(chat_id, "❌ Действие отменено. Вы можете начать заново.", bot_token=bot_token)
+            send_msg(chat_id, "❌ Действие отменено.", bot_token=bot_token)
             return True
         code = text.strip().upper()
         if len(code) != 8:
@@ -107,34 +92,26 @@ def handle_company_states(user_id, chat_id, text, bot_token):
     return False
 
 def handle_withdraw_states(user_id, chat_id, text, bot_token):
-    """Обработка состояний для вывода средств"""
     state = get_state(user_id)
     if not state or not state.startswith('referral_withdraw'):
         return False
-
-    # Если пользователь написал команду — сбрасываем состояние
     if text.startswith('/'):
         clear_state(user_id)
         send_msg(chat_id, "❌ Операция отменена.", bot_token=bot_token)
         return True
-
     if state == 'referral_withdraw_method':
-        # Ожидаем выбора через callback, но если пользователь пишет текст, подсказываем
         send_msg(chat_id, "Пожалуйста, выберите способ вывода с помощью кнопок ниже.", bot_token=bot_token)
         return True
-
     if state == 'referral_withdraw_details':
         withdraw_data[user_id]['details'] = text.strip()
         set_state(user_id, 'referral_withdraw_bank')
         send_msg(chat_id, "Введите название банка (например, Сбербанк):", bot_token=bot_token)
         return True
-
     if state == 'referral_withdraw_bank':
         withdraw_data[user_id]['bank'] = text.strip()
         set_state(user_id, 'referral_withdraw_name')
         send_msg(chat_id, "Введите ваше полное ФИО:", bot_token=bot_token)
         return True
-
     if state == 'referral_withdraw_name':
         withdraw_data[user_id]['full_name'] = text.strip()
         set_state(user_id, 'referral_withdraw_confirm')
@@ -157,15 +134,12 @@ def handle_withdraw_states(user_id, chat_id, text, bot_token):
         }
         send_msg(chat_id, confirm_text, bot_token=bot_token, kb=kb)
         return True
-
     if state == 'referral_withdraw_confirm':
         send_msg(chat_id, "Пожалуйста, используйте кнопки для подтверждения или отмены.", bot_token=bot_token)
         return True
-
     return False
 
 def show_balance_info(user_id, chat_id, bot_token, bot_username):
-    """Показывает реферальную ссылку, баланс, статистику и кнопку вывода (если >=500)"""
     code = get_referral_code(user_id)
     ref_link = f"https://t.me/{bot_username}?start=ref_{code}"
     count, _ = get_referral_stats(user_id)
@@ -185,12 +159,7 @@ def show_balance_info(user_id, chat_id, bot_token, bot_username):
     if balance_kop >= 50000:
         kb = {"inline_keyboard": [[{"text": "💳 Вывести", "callback_data": "referral_withdraw"}]]}
     send_msg(chat_id, ans, bot_token=bot_token, kb=kb)
-
-# ----------------------------------------------------------------------------
-# Основной обработчик обновлений
-# ----------------------------------------------------------------------------
-
-def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username):
+    def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username):
     try:
         if "message" in update:
             msg = update["message"]
@@ -202,16 +171,13 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
             upsert_user(user_id, username, first_name, last_name)
             text = msg.get("text", "")
 
-            # Сначала проверяем состояния (компании и вывод) — сброс по командам уже внутри
             if get_state(user_id):
                 if handle_company_states(user_id, chat_id, text, bot_token):
                     return
                 if handle_withdraw_states(user_id, chat_id, text, bot_token):
                     return
-                # если состояние есть, но не обработано (не должно случиться) — сбросим его
                 clear_state(user_id)
 
-            # Команды
             if text.startswith("/start"):
                 parts = text.split()
                 if len(parts) > 1 and parts[1].startswith("ref_"):
@@ -236,11 +202,7 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 return
 
             elif text == "🚀 Новый анализ":
-                # Проверяем активную подписку (is_active=1 и end_date > now)
-                if is_sub_active(user_id):
-                    has_sub = 1
-                else:
-                    has_sub = 0
+                has_sub = 1 if is_sub_active(user_id) else 0
                 signed_url = generate_signed_url(user_id, has_sub, secret_key, webapp_url)
                 kb = {"inline_keyboard": [[{"text": "📂 Открыть анализатор", "web_app": {"url": signed_url}}]]}
                 send_msg(chat_id, "🔓 Открываю...", bot_token=bot_token, kb=kb)
@@ -264,26 +226,15 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 send_msg(chat_id, ans, bot_token=bot_token, kb=main_menu())
 
             elif text == "👥 B2B":
-                company = db_fetchone(
-                    "SELECT c.* FROM companies c JOIN company_members cm ON c.id = cm.company_id WHERE cm.user_id = ?",
-                    (user_id,)
-                )
+                company = db_fetchone("SELECT c.* FROM companies c JOIN company_members cm ON c.id = cm.company_id WHERE cm.user_id = ?", (user_id,))
                 if company:
-                    members = db_fetchall(
-                        "SELECT u.first_name, u.username FROM company_members cm JOIN users u ON cm.user_id = u.user_id WHERE cm.company_id = ?",
-                        (company["id"],)
-                    )
+                    members = db_fetchall("SELECT u.first_name, u.username FROM company_members cm JOIN users u ON cm.user_id = u.user_id WHERE cm.company_id = ?", (company["id"],))
                     ans = f"🏢 {safe_html(company['name'])}\nКод: {safe_html(company['invite_code'])}\nСотрудников: {len(members)}\n"
                     for m in members:
                         ans += f"• {safe_html(m['first_name'])} @{safe_html(m['username'] or 'нет')}\n"
                     send_msg(chat_id, ans, bot_token=bot_token, kb=main_menu())
                 else:
-                    kb = {
-                        "inline_keyboard": [
-                            [{"text": "Создать компанию", "callback_data": "create_company"}],
-                            [{"text": "Ввести код", "callback_data": "join_company"}]
-                        ]
-                    }
+                    kb = {"inline_keyboard": [[{"text": "Создать компанию", "callback_data": "create_company"}], [{"text": "Ввести код", "callback_data": "join_company"}]]}
                     send_msg(chat_id, "👥 Создай компанию или введи код", bot_token=bot_token, kb=kb)
 
             elif text == "💰 Баланс" or text.startswith("/referral"):
@@ -294,7 +245,6 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 send_msg(chat_id, "📩 Напиши сообщение, я перешлю его @LyokhaPatron", bot_token=bot_token, kb=kb)
 
             elif text.startswith("/"):
-                # Админские команды
                 if user_id == admin_id:
                     parts = text.split()
                     if parts[0] == "/activate" and len(parts) >= 3:
@@ -324,17 +274,13 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     else:
                         send_msg(chat_id, "❌ Неизвестная команда или недостаточно аргументов.", bot_token=bot_token)
                 else:
-                    # Неизвестная команда для обычного пользователя
                     send_msg(chat_id, "❌ Неизвестная команда. Используйте кнопки меню.", bot_token=bot_token)
-
             else:
-                # Текст, не являющийся командой — пересылаем в поддержку
                 safe_text = safe_html(text)
                 safe_name = safe_html(first_name)
                 send_msg(admin_id, f"📩 От {user_id} ({safe_name}): {safe_text}", bot_token=bot_token)
                 send_msg(chat_id, "✅ Отправлено в поддержку", bot_token=bot_token)
-
-        elif "callback_query" in update:
+                        elif "callback_query" in update:
             cb = update["callback_query"]
             user_id = cb["from"]["id"]
             data = cb["data"]
@@ -344,57 +290,37 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 send_msg(chat_id, "📩 Напиши сообщение, я перешлю", bot_token=bot_token)
                 answer_cb(cb["id"], bot_token=bot_token)
                 return
-
             elif data == "trial":
-                # Проверяем, не использовал ли пользователь уже пробный период
-                # Для этого можно проверить, была ли у него когда-либо подписка trial
-                # Просто проверим, есть ли активная подписка
                 active = get_sub(user_id)
                 if active and active.get('is_active') == 1:
                     send_msg(chat_id, "❌ У вас уже есть активная подписка", bot_token=bot_token)
                 else:
-                    # Проверим историю: была ли уже trial?
-                    # В простом варианте разрешаем повторно, но логичнее запретить.
-                    # Можно хранить в отдельной таблице или просто разрешить только один раз.
-                    # Для простоты запретим повторную активацию, если ранее была trial
-                    # Но у нас нет отдельной таблицы, поэтому разрешим повторно — это не критично.
-                    # Лучше создать отдельную таблицу user_trials, но для простоты пропустим.
                     create_sub(user_id, "trial", 3)
                     send_msg(chat_id, "✅ 3 дня бесплатно активированы!", bot_token=bot_token)
                 answer_cb(cb["id"], bot_token=bot_token)
                 return
-
             elif data == "create_company":
                 set_state(user_id, 'creating_company')
                 send_msg(chat_id, "Введи название компании", bot_token=bot_token)
                 answer_cb(cb["id"], bot_token=bot_token)
                 return
-
             elif data == "join_company":
                 set_state(user_id, 'joining_company')
                 send_msg(chat_id, "Введи код приглашения (8 символов)", bot_token=bot_token)
                 answer_cb(cb["id"], bot_token=bot_token)
                 return
-
             elif data == "referral_withdraw":
                 balance_kop = get_balance(user_id)
                 if balance_kop < 50000:
                     send_msg(chat_id, "❌ Недостаточно средств для вывода (минимум 500 ₽)", bot_token=bot_token)
                     answer_cb(cb["id"], bot_token=bot_token)
                     return
-                kb = {
-                    "inline_keyboard": [
-                        [{"text": "📱 По номеру телефона", "callback_data": "withdraw_method_phone"}],
-                        [{"text": "💳 По карте", "callback_data": "withdraw_method_card"}],
-                        [{"text": "❌ Отмена", "callback_data": "withdraw_cancel"}]
-                    ]
-                }
+                kb = {"inline_keyboard": [[{"text": "📱 По номеру телефона", "callback_data": "withdraw_method_phone"}], [{"text": "💳 По карте", "callback_data": "withdraw_method_card"}], [{"text": "❌ Отмена", "callback_data": "withdraw_cancel"}]]}
                 send_msg(chat_id, "Выберите способ вывода:", bot_token=bot_token, kb=kb)
                 set_state(user_id, 'referral_withdraw_method')
                 withdraw_data[user_id] = {'amount': balance_kop}
                 answer_cb(cb["id"], bot_token=bot_token)
                 return
-
             elif data.startswith("withdraw_method_"):
                 method = data.replace("withdraw_method_", "")
                 if method not in ['phone', 'card']:
@@ -402,14 +328,10 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     return
                 withdraw_data[user_id]['method'] = method
                 set_state(user_id, 'referral_withdraw_details')
-                if method == 'phone':
-                    prompt = "Введите номер телефона в формате +7XXXXXXXXXX:"
-                else:
-                    prompt = "Введите номер карты (16 цифр):"
+                prompt = "Введите номер телефона +7XXXXXXXXXX:" if method == 'phone' else "Введите номер карты (16 цифр):"
                 send_msg(chat_id, prompt, bot_token=bot_token)
                 answer_cb(cb["id"], bot_token=bot_token)
                 return
-
             elif data == "withdraw_confirm":
                 data_w = withdraw_data.get(user_id)
                 if not data_w:
@@ -417,28 +339,21 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     clear_state(user_id)
                     answer_cb(cb["id"], bot_token=bot_token)
                     return
-                amount = data_w['amount']
-                method = data_w['method']
-                details = data_w['details']
-                bank = data_w['bank']
-                full_name = data_w['full_name']
-                success, msg = create_withdraw_request(user_id, amount, method, details, bank, full_name)
+                success, msg = create_withdraw_request(user_id, data_w['amount'], data_w['method'], data_w['details'], data_w['bank'], data_w['full_name'])
                 if success:
-                    amount_rub = amount / 100
-                    notify_admin_withdraw(admin_id, bot_token, user_id, amount_rub, method, details, bank, full_name)
-                    send_msg(chat_id, f"✅ Заявка на вывод {amount_rub:.2f} ₽ отправлена!\nОжидайте обработки администратором.", bot_token=bot_token)
+                    amount_rub = data_w['amount'] / 100
+                    notify_admin_withdraw(admin_id, bot_token, user_id, amount_rub, data_w['method'], data_w['details'], data_w['bank'], data_w['full_name'])
+                    send_msg(chat_id, f"✅ Заявка на вывод {amount_rub:.2f} ₽ отправлена!", bot_token=bot_token)
                 else:
                     send_msg(chat_id, f"❌ {msg}", bot_token=bot_token)
                 clear_state(user_id)
                 answer_cb(cb["id"], bot_token=bot_token)
                 return
-
             elif data == "withdraw_cancel":
                 send_msg(chat_id, "❌ Операция отменена", bot_token=bot_token)
                 clear_state(user_id)
                 answer_cb(cb["id"], bot_token=bot_token)
                 return
-
             elif data.startswith("tariff_"):
                 plan = data.replace("tariff_", "")
                 amount = {"pro": 990, "premium": 1990, "b2b": 4990}[plan]
@@ -446,25 +361,10 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 url = "https://api.yookassa.ru/v3/payments"
                 auth = (yookassa_shop_id, yookassa_secret_key)
                 try:
-                    resp = requests.post(
-                        url,
-                        json={
-                            "amount": {"value": f"{amount:.2f}", "currency": "RUB"},
-                            "confirmation": {"type": "redirect", "return_url": f"{base_url}/payment-success"},
-                            "capture": True,
-                            "description": f"SaleFlow {plan}",
-                            "metadata": {"user_id": user_id, "plan_type": plan}
-                        },
-                        auth=auth,
-                        headers={"Idempotence-Key": payment_id, "Content-Type": "application/json"},
-                        timeout=10
-                    )
+                    resp = requests.post(url, json={"amount": {"value": f"{amount:.2f}", "currency": "RUB"}, "confirmation": {"type": "redirect", "return_url": f"{base_url}/payment-success"}, "capture": True, "description": f"SaleFlow {plan}", "metadata": {"user_id": user_id, "plan_type": plan}}, auth=auth, headers={"Idempotence-Key": payment_id, "Content-Type": "application/json"}, timeout=10)
                     if resp.status_code in (200, 201):
                         r = resp.json()
-                        db_execute(
-                            "INSERT INTO payments (user_id, payment_id, amount, currency, status, plan_type) VALUES (?, ?, ?, 'RUB', 'pending', ?)",
-                            (user_id, r["id"], int(amount*100), plan)
-                        )
+                        db_execute("INSERT INTO payments (user_id, payment_id, amount, currency, status, plan_type) VALUES (?, ?, ?, 'RUB', 'pending', ?)", (user_id, r["id"], int(amount*100), plan))
                         kb = {"inline_keyboard": [[{"text": "💳 Оплатить", "url": r["confirmation"]["confirmation_url"]}]]}
                         send_msg(chat_id, f"💳 Оплата {plan}: {amount}₽", bot_token=bot_token, kb=kb)
                     else:
@@ -473,7 +373,6 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     send_msg(chat_id, "❌ Ошибка соединения с платёжным шлюзом", bot_token=bot_token)
                 answer_cb(cb["id"], bot_token=bot_token)
                 return
-
             else:
                 answer_cb(cb["id"], bot_token=bot_token)
 
@@ -491,10 +390,7 @@ def get_updates(offset, bot_token, admin_id, base_url, webapp_url, secret_key, y
             if data.get("ok"):
                 for u in data["result"]:
                     offset = u["update_id"] + 1
-                    process_update(
-                        u, bot_token, admin_id, base_url, webapp_url, secret_key,
-                        yookassa_shop_id, yookassa_secret_key, bot_username
-                    )
+                    process_update(u, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username)
         else:
             logger.error(f"Ошибка getUpdates: статус {r.status_code}")
     except requests.exceptions.RequestException as e:
