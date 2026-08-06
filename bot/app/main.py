@@ -6,7 +6,7 @@ import time
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
-from .config_db import init_db, db_fetchone, db_execute, get_sub, create_sub
+from .db import init_db, db_fetchone, db_execute, get_sub, create_sub
 from .handlers import process_update
 from .utils import check_pending_payments, notif_loop
 from .models_referrals import award_referral_bonus
@@ -71,13 +71,6 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
-        # Обработка CORS для всех POST
-        if self.path != "/webhook/telegram" and self.path != "/webhook/yookassa":
-            self.send_response(200)
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-        
-        # Вебхук Telegram
         if self.path == "/webhook/telegram":
             content_length = int(self.headers.get('Content-Length', 0))
             data = json.loads(self.rfile.read(content_length)) if content_length else {}
@@ -100,7 +93,6 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"OK")
             return
 
-        # Вебхук ЮKassa
         if self.path == "/webhook/yookassa":
             data = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))))
             if data.get("event") == "payment.succeeded":
@@ -120,7 +112,6 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"OK")
             return
 
-        # --- СОХРАНЕНИЕ АНАЛИЗА (С ДЕТАЛЬНЫМ ЛОГИРОВАНИЕМ) ---
         if self.path == "/api/save_analysis":
             content_length = int(self.headers.get('Content-Length', 0))
             raw_data = self.rfile.read(content_length)
@@ -133,25 +124,18 @@ class Handler(BaseHTTPRequestHandler):
             markers_found = data.get('markers_found', 0)
             positives = data.get('positives', '')
             negatives = data.get('negatives', '')
-            
-            logger.info(f"SAVE_ANALYSIS: user_id={user_id}, score={score}, markers={markers_found}")
-            
+            logger.info(f"SAVE_ANALYSIS: user_id={user_id}, score={score}")
             if user_id:
                 db_execute(
                     "INSERT INTO analysis_history (user_id, score, markers_found, positives, negatives) VALUES (?, ?, ?, ?, ?)",
                     (user_id, score, markers_found, positives, negatives)
                 )
-                logger.info(f"Analysis saved for user {user_id}")
-            else:
-                logger.warning("Save analysis called without user_id")
-            
             self.send_response(200)
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(b'{"status":"ok"}')
             return
 
-        # Реферальный бонус (оставлен для совместимости)
         if self.path == "/api/first_analysis":
             content_length = int(self.headers.get('Content-Length', 0))
             data = json.loads(self.rfile.read(content_length)) if content_length else {}
@@ -159,7 +143,6 @@ class Handler(BaseHTTPRequestHandler):
             if user_id:
                 ref = db_fetchone("SELECT * FROM referrals WHERE referred_id = ? AND bonus_given = 0", (user_id,))
                 if ref:
-                    # логика бонуса (можно оставить пустой)
                     pass
             self.send_response(200)
             self.send_header('Access-Control-Allow-Origin', '*')
@@ -167,7 +150,6 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b'{"status":"ok"}')
             return
 
-        # Неизвестный путь
         self.send_response(404)
         self.end_headers()
 
