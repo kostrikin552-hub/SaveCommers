@@ -196,7 +196,18 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     else:
                         trial_msg = '⛔ Пробный период истёк\n'
                 elif sub and sub['is_active'] == 1:
-                    trial_msg = '🔓 Подписка ' + sub['plan_type'].upper() + ' до ' + sub['end_date'] + '\n'
+                    plan_name = sub['plan_type'].upper()
+                    if plan_name == 'TRIAL':
+                        plan_name = 'Пробный'
+                    elif plan_name == 'PRO':
+                        plan_name = 'Pro'
+                    elif plan_name == 'PREMIUM':
+                        plan_name = 'Премиум'
+                    elif plan_name == 'B2B':
+                        plan_name = 'B2B'
+                    else:
+                        plan_name = plan_name.capitalize()
+                    trial_msg = '🔓 Подписка ' + plan_name + ' до ' + sub['end_date'] + '\n'
                 else:
                     trial_msg = '⛔ Нет активной подписки\n'
                 msg_text = '🌊 Привет, ' + safe_html(first_name) + '!\n' + trial_msg + 'Нажми \'Новый анализ\' и вставь переписку.'
@@ -216,15 +227,28 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 sub = get_sub(user_id)
                 history = db_fetchall('SELECT * FROM analysis_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 5', (user_id,))
                 if sub and sub['is_active'] == 1:
-                    ans = '📈 Тариф: ' + sub['plan_type'].upper() + '\nДо: ' + sub['end_date'] + '\n'
+                    plan_name = sub['plan_type'].upper()
+                    if plan_name == 'TRIAL':
+                        plan_name = 'Пробный'
+                    elif plan_name == 'PRO':
+                        plan_name = 'Pro'
+                    elif plan_name == 'PREMIUM':
+                        plan_name = 'Премиум'
+                    elif plan_name == 'B2B':
+                        plan_name = 'B2B'
+                    else:
+                        plan_name = plan_name.capitalize()
+                    ans = '📈 Тариф: ' + plan_name + '\n'
+                    ans += 'Действует до: ' + sub['end_date'] + '\n'
                 else:
                     ans = '📈 Нет активной подписки\n'
                 if history:
-                    ans += 'Последние анализы:\n'
+                    ans += '📊 Последние анализы:\n'
                     for h in history:
-                        ans += '• ' + h['created_at'][:10] + ': ' + str(h['score']) + '/100, ' + str(h['markers_found']) + ' маркеров\n'
+                        date_str = h['created_at'][:10]
+                        ans += '• ' + date_str + ': ' + str(h['score']) + '/100, найдено ' + str(h['markers_found']) + ' критериев\n'
                 else:
-                    ans += 'Нет истории'
+                    ans += 'Нет анализов'
                 send_msg(chat_id, ans, bot_token=bot_token, kb=main_menu())
 
             elif text == '👥 B2B':
