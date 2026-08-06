@@ -280,7 +280,8 @@ def show_balance_info(user_id, chat_id, bot_token, bot_username):
                 safe_name = safe_html(first_name)
                 send_msg(admin_id, f"📩 От {user_id} ({safe_name}): {safe_text}", bot_token=bot_token)
                 send_msg(chat_id, "✅ Отправлено в поддержку", bot_token=bot_token)
-                        elif "callback_query" in update:
+
+        elif "callback_query" in update:
             cb = update["callback_query"]
             user_id = cb["from"]["id"]
             data = cb["data"]
