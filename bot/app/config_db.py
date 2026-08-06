@@ -209,12 +209,15 @@ def main_menu():
         "resize_keyboard": True
     }
 
-def tariffs_kb():
-    return {
-        "inline_keyboard": [
-            [{"text": "🔓 Pro 990₽/мес", "callback_data": "tariff_pro"}],
-            [{"text": "👑 Premium 1990₽/мес", "callback_data": "tariff_premium"}],
-            [{"text": "🏢 B2B 4990₽/мес (до 10 чел)", "callback_data": "tariff_b2b"}],
-            [{"text": "🎁 Активировать 3 дня бесплатно", "callback_data": "trial"}]
-        ]
-    }
+def tariffs_kb(user_id=None):
+    kb = [
+        [{"text": "🔓 Pro 990₽/мес", "callback_data": "tariff_pro"}],
+        [{"text": "👑 Premium 1990₽/мес", "callback_data": "tariff_premium"}],
+        [{"text": "🏢 B2B 4990₽/мес (до 10 чел)", "callback_data": "tariff_b2b"}]
+    ]
+    # Показываем кнопку триала только если пользователь ещё не активировал его
+    if user_id:
+        trial_used = db_fetchone("SELECT 1 FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
+        if not trial_used:
+            kb.append([{"text": "🎁 Активировать 3 дня бесплатно", "callback_data": "trial"}])
+    return {"inline_keyboard": kb}
