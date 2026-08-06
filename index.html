@@ -1,60 +1,31 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SaleFlow — анализ</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-    <div id="app">
-        <!-- НОВАЯ ШАПКА (дизайн, но не мешает скрипту) -->
-        <div class="app-header">
-            <div class="logo">
-                <span>🌊</span> SaleFlow
-            </div>
-            <div class="badge" id="subscription-badge">Бесплатно</div>
+<div id="app">
+    <h1>🌊 SaleFlow</h1>
+    <div id="step-upload">
+        <div class="info-box">
+            <strong>📌 Как вставить переписку:</strong> Используй «Клиент:» и «Вы:» перед каждой репликой — это даст максимальную точность. Или просто чередуй строки: первая — клиент, вторая — вы.
         </div>
-
-        <!-- СТАРАЯ СТРУКТУРА (рабочая) -->
-        <div id="step-upload">
-            <div class="info-box">
-                <strong>📌 Как вставить переписку:</strong> Используй «Клиент:» и «Вы:» перед каждой репликой — это даст максимальную точность.<br />
-                Или просто чередуй строки: первая — клиент, вторая — вы.
-            </div>
-
-            <select id="template-select" class="template-select">
-                <option value="">— Выберите шаблон диалога —</option>
-                <option value="ecommerce">Интернет-магазин</option>
-                <option value="services">Услуги (консалтинг)</option>
-                <option value="b2b">B2B-продажи</option>
-                <option value="cold">Холодный контакт</option>
-            </select>
-
-            <textarea id="dialog-input" rows="6" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?"></textarea>
-
-            <button id="analyze-btn">🔍 Анализировать</button>
-            <button id="example-btn" class="btn-secondary" style="margin-top:4px;">📋 Вставить пример</button>
-        </div>
-
-        <div id="step-result" style="display:none;"></div>
+        <select id="template-select" class="template-select">
+            <option value="">— Выберите шаблон диалога —</option>
+            <option value="ecommerce">Интернет-магазин</option>
+            <option value="services">Услуги (консалтинг)</option>
+            <option value="b2b">B2B-продажи</option>
+            <option value="cold">Холодный контакт</option>
+        </select>
+        <textarea id="dialog-input" rows="6" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?"></textarea>
+        <button id="analyze-btn">🔍 Анализировать</button>
+        <button id="example-btn" class="btn-secondary" style="margin-top:4px;">📋 Вставить пример</button>
     </div>
-
-    <script src="script.js"></script>
-    <script>
-        // Обновление бейджа подписки (по параметру sub)
-        (function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const hasSub = urlParams.get('sub') === '1';
-            const badge = document.getElementById('subscription-badge');
-            if (hasSub) {
-                badge.textContent = '⭐ Pro';
-                badge.style.borderColor = '#f5a623';
-                badge.style.color = '#f5a623';
-            }
-        })();
-    </script>
+    <div id="step-result" style="display:none;"></div>
+</div>
+<script src="script.js"></script>
 </body>
 </html>
