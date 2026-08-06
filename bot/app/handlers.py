@@ -159,7 +159,7 @@ def show_balance_info(user_id, chat_id, bot_token, bot_username):
     if balance_kop >= 50000:
         kb = {"inline_keyboard": [[{"text": "💳 Вывести", "callback_data": "referral_withdraw"}]]}
     send_msg(chat_id, ans, bot_token=bot_token, kb=kb)
-    def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username):
+def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username):
     try:
         if "message" in update:
             msg = update["message"]
