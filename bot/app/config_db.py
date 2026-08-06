@@ -1,245 +1,96 @@
-import sqlite3
+import requests
+import json
+import logging
 import time
-import threading
-import uuid
-import hmac
-import hashlib
-import math
-from datetime import datetime, timedelta, timezone
-from urllib.parse import urlencode
+from datetime import datetime, timezone
+from .config_db import db_fetchall, db_execute, get_sub, create_sub, days_left
 
-DB_PATH = "data.db"
-db_lock = threading.Lock()
+logger = logging.getLogger(__name__)
 
-def init_db():
-    with db_lock:
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute("PRAGMA journal_mode=WAL")
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            first_name TEXT,
-            last_name TEXT
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS subscriptions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            plan_type TEXT,
-            status TEXT,
-            start_date TIMESTAMP,
-            end_date TIMESTAMP,
-            is_active INTEGER DEFAULT 1
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS payments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            payment_id TEXT UNIQUE,
-            amount INTEGER,
-            currency TEXT,
-            status TEXT,
-            plan_type TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS companies (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            owner_id INTEGER,
-            invite_code TEXT UNIQUE
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS company_members (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company_id INTEGER,
-            user_id INTEGER,
-            role TEXT DEFAULT 'member',
-            UNIQUE(company_id, user_id)
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS analysis_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            score INTEGER,
-            markers_found INTEGER DEFAULT 0,
-            positives TEXT,
-            negatives TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS referrals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            referrer_id INTEGER,
-            referred_id INTEGER UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            bonus_given INTEGER DEFAULT 0
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS user_ref_codes (
-            user_id INTEGER PRIMARY KEY,
-            code TEXT UNIQUE
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS referral_balances (
-            user_id INTEGER PRIMARY KEY,
-            balance INTEGER DEFAULT 0
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS referral_earnings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            referrer_id INTEGER,
-            amount INTEGER,
-            source TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS withdraw_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            amount INTEGER,
-            method TEXT,
-            details TEXT,
-            bank TEXT,
-            full_name TEXT,
-            status TEXT DEFAULT 'pending',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-        conn.commit()
-        conn.close()
+def send_msg(chat_id, text, bot_token, kb=None):
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
+    if kb:
+        payload["reply_markup"] = json.dumps(kb)
+    try:
+        requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json=payload)
+    except Exception as e:
+        logger.error(f"Ошибка отправки сообщения: {e}")
 
-def db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def answer_cb(cb_id, bot_token, text=""):
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
+            json={"callback_query_id": cb_id, "text": text}
+        )
+    except:
+        pass
 
-def db_execute(q, p=(), retries=3):
-    with db_lock:
-        for attempt in range(retries):
-            conn = db()
-            try:
-                c = conn.cursor()
-                c.execute(q, p)
-                conn.commit()
-                return
-            except sqlite3.OperationalError as e:
-                if "database is locked" in str(e) and attempt < retries-1:
-                    time.sleep(0.1 * (attempt+1))
-                    continue
-                conn.rollback()
-                raise
-            finally:
-                conn.close()
+def send_error_to_admin(admin_id, text, bot_token):
+    try:
+        send_msg(admin_id, f"🚨 Критическая ошибка:\n{text[:4000]}", bot_token=bot_token)
+    except:
+        pass
 
-def db_fetchone(q, p=()):
-    with db_lock:
-        conn = db()
+def notify_admin_withdraw(admin_id, bot_token, user_id, amount_rub, method, details, bank, full_name):
+    text = (
+        f"💰 <b>НОВАЯ ЗАЯВКА НА ВЫВОД</b>\n"
+        f"👤 ID пользователя: {user_id}\n"
+        f"💵 Сумма: {amount_rub:.2f} ₽\n"
+        f"📱 Способ: {method}\n"
+        f"🔢 Реквизиты: {details}\n"
+        f"🏦 Банк: {bank}\n"
+        f"👤 ФИО: {full_name}\n"
+        f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    )
+    send_msg(admin_id, text, bot_token=bot_token)
+
+def check_pending_payments(yookassa_shop_id, yookassa_secret_key):
+    while True:
         try:
-            c = conn.cursor()
-            c.execute(q, p)
-            return c.fetchone()
-        finally:
-            conn.close()
+            pending = db_fetchall(
+                "SELECT * FROM payments WHERE status = 'pending' AND created_at < datetime('now', '-10 minutes')"
+            )
+            for payment in pending:
+                payment_id = payment["payment_id"]
+                url = f"https://api.yookassa.ru/v3/payments/{payment_id}"
+                auth = (yookassa_shop_id, yookassa_secret_key)
+                response = requests.get(url, auth=auth)
+                if response.status_code == 200:
+                    data = response.json()
+                    status = data.get("status")
+                    if status == "succeeded":
+                        db_execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (payment_id,))
+                        days = 30
+                        create_sub(payment["user_id"], payment["plan_type"], days)
+                        try:
+                            from .models_referrals import award_referral_bonus
+                            award_referral_bonus(payment["user_id"], payment["amount"])
+                        except:
+                            pass
+                    elif status in ("canceled", "expired"):
+                        db_execute("UPDATE payments SET status = 'failed' WHERE payment_id = ?", (payment_id,))
+        except Exception as e:
+            logger.error(f"Payment checker error: {e}")
+        time.sleep(3600)
 
-def db_fetchall(q, p=()):
-    with db_lock:
-        conn = db()
+def notif_loop(bot_token, admin_id):
+    while True:
         try:
-            c = conn.cursor()
-            c.execute(q, p)
-            return c.fetchall()
-        finally:
-            conn.close()
-
-def db_execute_lastrowid(q, p=()):
-    with db_lock:
-        conn = db()
-        try:
-            c = conn.cursor()
-            c.execute(q, p)
-            conn.commit()
-            return c.lastrowid
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
-
-def get_sub(user_id):
-    return db_fetchone("""
-        SELECT *
-        FROM subscriptions
-        WHERE user_id = ?
-          AND is_active = 1
-          AND datetime(end_date) > datetime('now')
-        ORDER BY datetime(end_date) DESC
-        LIMIT 1
-    """, (user_id,))
-
-def create_sub(user_id, plan, days):
-    db_execute("UPDATE subscriptions SET is_active = 0 WHERE user_id = ?", (user_id,))
-    now = datetime.now(timezone.utc)
-    start_date = now.strftime("%Y-%m-%d %H:%M:%S")
-    end_date = (now + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
-    db_execute(
-        "INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (?, ?, 'active', ?, ?, 1)",
-        (user_id, plan, start_date, end_date)
-    )
-
-def days_left(sub):
-    if not sub:
-        return 0
-    end_dt = datetime.strptime(sub['end_date'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-    delta = end_dt - datetime.now(timezone.utc)
-    if delta.total_seconds() <= 0:
-        return 0
-    return int(math.ceil(delta.total_seconds() / 86400))
-
-def upsert_user(user_id, username, first_name, last_name):
-    db_execute(
-        "INSERT OR REPLACE INTO users (user_id, username, first_name, last_name) VALUES (?, ?, ?, ?)",
-        (user_id, username, first_name, last_name)
-    )
-
-def create_company(owner_id, name):
-    if len(name.strip()) < 2:
-        return None
-    code = str(uuid.uuid4())[:8].upper()
-    company_id = db_execute_lastrowid(
-        "INSERT INTO companies (name, owner_id, invite_code) VALUES (?, ?, ?)",
-        (name.strip(), owner_id, code)
-    )
-    if company_id is None:
-        return None
-    db_execute(
-        "INSERT INTO company_members (company_id, user_id, role) VALUES (?, ?, 'admin')",
-        (company_id, owner_id)
-    )
-    return {"id": company_id, "invite_code": code}
-
-def generate_signed_url(user_id, has_sub, secret_key, webapp_url, backend_url):
-    timestamp = int(time.time())
-    payload = f"{user_id}:{timestamp}:{has_sub}"
-    signature = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    params = {
-        "user_id": user_id,
-        "ts": timestamp,
-        "sub": has_sub,
-        "sig": signature,
-        "backend_url": backend_url
-    }
-    return f"{webapp_url}?{urlencode(params)}"
-
-def main_menu():
-    return {
-        "keyboard": [
-            [{"text": "🚀 Новый анализ"}, {"text": "📊 Мой прогресс"}],
-            [{"text": "💎 Тарифы"}, {"text": "👥 B2B"}],
-            [{"text": "💰 Баланс"}, {"text": "❓ Поддержка"}]
-        ],
-        "resize_keyboard": True
-    }
-
-def tariffs_kb(user_id=None):
-    kb = [
-        [{"text": "🔓 Pro 990₽/мес", "callback_data": "tariff_pro"}],
-        [{"text": "👑 Premium 1990₽/мес", "callback_data": "tariff_premium"}],
-        [{"text": "🏢 B2B 4990₽/мес (до 10 чел)", "callback_data": "tariff_b2b"}]
-    ]
-    if user_id:
-        trial_used = db_fetchone("SELECT 1 FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
-        if not trial_used:
-            kb.append([{"text": "🎁 Активировать 3 дня бесплатно", "callback_data": "trial"}])
-    return {"inline_keyboard": kb}
+            expiring = db_fetchall(
+                "SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now', '+3 days') AND end_date > datetime('now')"
+            )
+            for sub in expiring:
+                days = days_left(sub)
+                send_msg(sub["user_id"], f"⏳ Подписка истекает через {days} дн.", bot_token=bot_token)
+                time.sleep(0.5)
+            expired = db_fetchall(
+                "SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now')"
+            )
+            for sub in expired:
+                db_execute("UPDATE subscriptions SET is_active = 0 WHERE id = ?", (sub["id"],))
+                send_msg(sub["user_id"], "❌ Подписка истекла", bot_token=bot_token)
+                time.sleep(0.5)
+        except Exception as e:
+            logger.error(f"Уведомления: {e}")
+            send_error_to_admin(admin_id, f"Ошибка уведомлений: {e}", bot_token)
+        time.sleep(86400)
