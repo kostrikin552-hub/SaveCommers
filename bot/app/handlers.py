@@ -119,15 +119,13 @@ def handle_withdraw_states(user_id, chat_id, text, bot_token):
         set_state(user_id, 'referral_withdraw_confirm')
         data = withdraw_data[user_id]
         amount_rub = data['amount'] / 100
-        confirm_text = (
-            '✅ <b>Проверьте данные</b>\n'
-            '💵 Сумма: {:.2f} ₽\n'
-            '📱 Способ: {}\n'
-            '🔢 Реквизиты: {}\n'
-            '🏦 Банк: {}\n'
-            '👤 ФИО: {}\n\n'
-            'Подтвердить вывод?'
-        ).format(amount_rub, safe_html(data['method']), safe_html(data['details']), safe_html(data['bank']), safe_html(data['full_name']))
+        confirm_text = '✅ <b>Проверьте данные</b>\n'
+        confirm_text += '💵 Сумма: ' + format(amount_rub, '.2f') + ' ₽\n'
+        confirm_text += '📱 Способ: ' + safe_html(data['method']) + '\n'
+        confirm_text += '🔢 Реквизиты: ' + safe_html(data['details']) + '\n'
+        confirm_text += '🏦 Банк: ' + safe_html(data['bank']) + '\n'
+        confirm_text += '👤 ФИО: ' + safe_html(data['full_name']) + '\n\n'
+        confirm_text += 'Подтвердить вывод?'
         kb = {
             'inline_keyboard': [
                 [{'text': '✅ Подтвердить', 'callback_data': 'withdraw_confirm'}],
@@ -147,16 +145,14 @@ def show_balance_info(user_id, chat_id, bot_token, bot_username):
     count, _ = get_referral_stats(user_id)
     balance_kop = get_balance(user_id)
     balance_rub = balance_kop / 100
-    ans = (
-        '🔗 <b>Ваша реферальная ссылка:</b>\n'
-        '<code>{}</code>\n\n'
-        '👥 Приведено друзей: {}\n'
-        '💰 Баланс: {:.2f} ₽\n\n'
-        'За каждого приглашённого, кто оформит подписку, вы получите:\n'
-        '• 5 дней Pro-подписки\n'
-        '• 20% от суммы его оплаты на баланс\n\n'
-        'Минимальная сумма вывода: 500 ₽'
-    ).format(safe_html(ref_link), count, balance_rub)
+    ans = '🔗 <b>Ваша реферальная ссылка:</b>\n'
+    ans += '<code>' + safe_html(ref_link) + '</code>\n\n'
+    ans += '👥 Приведено друзей: ' + str(count) + '\n'
+    ans += '💰 Баланс: ' + format(balance_rub, '.2f') + ' ₽\n\n'
+    ans += 'За каждого приглашённого, кто оформит подписку, вы получите:\n'
+    ans += '• 5 дней Pro-подписки\n'
+    ans += '• 20% от суммы его оплаты на баланс\n\n'
+    ans += 'Минимальная сумма вывода: 500 ₽'
     kb = None
     if balance_kop >= 50000:
         kb = {'inline_keyboard': [[{'text': '💳 Вывести', 'callback_data': 'referral_withdraw'}]]}
