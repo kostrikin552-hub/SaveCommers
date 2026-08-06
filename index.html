@@ -10,7 +10,7 @@
 <body>
 
     <div id="app">
-        <!-- ШАПКА -->
+        <!-- НОВАЯ ШАПКА (дизайн, но не мешает скрипту) -->
         <div class="app-header">
             <div class="logo">
                 <span>🌊</span> SaleFlow
@@ -18,34 +18,28 @@
             <div class="badge" id="subscription-badge">Бесплатно</div>
         </div>
 
-        <!-- ЭКРАН 1: ВВОД ДИАЛОГА -->
+        <!-- СТАРАЯ СТРУКТУРА (рабочая) -->
         <div id="step-upload">
-            <h2 class="step-title">Вставьте диалог с клиентом</h2>
-            <p class="step-subtitle">Мы проанализируем его по 30 критериям и покажем, где вы теряете клиентов.</p>
-
-            <textarea id="dialog-input" class="dialog-textarea" rows="6" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?"></textarea>
-
-            <span class="templates-label">Или выберите шаблон:</span>
-            <div class="templates-scroll">
-                <button class="template-chip" data-template="ecommerce">🛍️ E‑commerce</button>
-                <button class="template-chip" data-template="services">💼 Услуги</button>
-                <button class="template-chip" data-template="b2b">🏢 B2B</button>
-                <button class="template-chip" data-template="cold">❄️ Холодный контакт</button>
+            <div class="info-box">
+                <strong>📌 Как вставить переписку:</strong> Используй «Клиент:» и «Вы:» перед каждой репликой — это даст максимальную точность.<br />
+                Или просто чередуй строки: первая — клиент, вторая — вы.
             </div>
 
-            <button id="analyze-btn" class="btn-primary">🔍 Анализировать</button>
-            <button id="example-btn" class="btn-secondary">📋 Вставить пример</button>
+            <select id="template-select" class="template-select">
+                <option value="">— Выберите шаблон диалога —</option>
+                <option value="ecommerce">Интернет-магазин</option>
+                <option value="services">Услуги (консалтинг)</option>
+                <option value="b2b">B2B-продажи</option>
+                <option value="cold">Холодный контакт</option>
+            </select>
 
-            <div class="footer-note">⏱️ Анализ до 60 секунд • Результаты сохраняются</div>
+            <textarea id="dialog-input" rows="6" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?"></textarea>
+
+            <button id="analyze-btn">🔍 Анализировать</button>
+            <button id="example-btn" class="btn-secondary" style="margin-top:4px;">📋 Вставить пример</button>
         </div>
 
-        <!-- ЭКРАН 2: РЕЗУЛЬТАТЫ (скрыт) -->
-        <div id="step-result" class="hidden">
-            <!-- сюда вставляется результат через JS -->
-        </div>
-
-        <!-- TOAST-УВЕДОМЛЕНИЕ -->
-        <div id="toast" class="toast">✅ Скопировано!</div>
+        <div id="step-result" style="display:none;"></div>
     </div>
 
     <script src="script.js"></script>
@@ -62,6 +56,5 @@
             }
         })();
     </script>
-
 </body>
 </html>
