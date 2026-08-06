@@ -3,6 +3,7 @@ import json
 import threading
 import logging
 import time
+import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
 from .config_db import init_db, db_fetchone, db_execute, get_sub, create_sub
@@ -28,6 +29,13 @@ PORT = int(os.getenv("PORT", 10000))
 
 offset = 0
 init_db()
+
+# --- Удаляем вебхук, чтобы использовать getUpdates ---
+try:
+    resp = requests.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook")
+    logger.info(f"Delete webhook response: {resp.status_code} - {resp.text}")
+except Exception as e:
+    logger.error(f"Failed to delete webhook: {e}")
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
