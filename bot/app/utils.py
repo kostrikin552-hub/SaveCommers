@@ -3,7 +3,7 @@ import json
 import logging
 import time
 from datetime import datetime, timezone
-from .config_db import db_fetchall, db_execute, get_sub, create_sub
+from .db import db_fetchall, db_execute, get_sub, create_sub, days_left
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +80,7 @@ def notif_loop(bot_token, admin_id):
                 "SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now', '+3 days') AND end_date > datetime('now')"
             )
             for sub in expiring:
-                end_dt = datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-                days = (end_dt - datetime.now(timezone.utc)).days
+                days = days_left(sub)
                 send_msg(sub["user_id"], f"⏳ Подписка истекает через {days} дн.", bot_token=bot_token)
                 time.sleep(0.5)
             expired = db_fetchall(
