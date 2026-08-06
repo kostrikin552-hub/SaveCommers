@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from .config_db import init_db, db_fetchone, db_execute, get_sub, create_sub
 from .handlers import get_updates
 from .utils import check_pending_payments, notif_loop
-from .models_referrals import apply_referral_bonus
+from .models_referrals import award_referral_bonus
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -44,7 +44,6 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
-        # Эндпоинт для реферального бонуса
         if self.path == "/api/first_analysis":
             content_length = int(self.headers.get('Content-Length', 0))
             data = json.loads(self.rfile.read(content_length)) if content_length else {}
@@ -52,27 +51,27 @@ class Handler(BaseHTTPRequestHandler):
             if user_id:
                 ref = db_fetchone("SELECT * FROM referrals WHERE referred_id = ? AND bonus_given = 0", (user_id,))
                 if ref:
-                    apply_referral_bonus(ref['referrer_id'], user_id)
-                    self.send_response(200)
-                    self.end_headers()
-                    self.wfile.write(b'{"status":"bonus_granted"}')
-                    return
+                    # Можно оставить для совместимости, но мы не используем отдельный бонус за анализ
+                    pass
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b'{"status":"ok"}')
             return
 
-        # Эндпоинт для вебхука ЮKassa
         if self.path == "/webhook/yookassa":
             data = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))))
             if data.get("event") == "payment.succeeded":
                 obj = data.get("object", {})
                 user_id = int(obj.get("metadata", {}).get("user_id", 0))
                 plan_type = obj.get("metadata", {}).get("plan_type", "pro")
+                amount = obj.get("amount", {}).get("value", 0)
                 if user_id:
                     days = 30
                     create_sub(user_id, plan_type, days)
-                    db_execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (obj.get("id"),))
+                    payment_id = obj.get("id")
+                    db_execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (payment_id,))
+                    amount_kop = int(float(amount) * 100)
+                    award_referral_bonus(user_id, amount_kop)
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(b"OK")
