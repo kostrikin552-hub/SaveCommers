@@ -73,6 +73,29 @@ def init_db():
             user_id INTEGER PRIMARY KEY,
             code TEXT UNIQUE
         )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS referral_balances (
+            user_id INTEGER PRIMARY KEY,
+            balance INTEGER DEFAULT 0
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS referral_earnings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            referrer_id INTEGER,
+            amount INTEGER,
+            source TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS withdraw_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            amount INTEGER,
+            method TEXT,
+            details TEXT,
+            bank TEXT,
+            full_name TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
         conn.commit()
         conn.close()
 
@@ -139,7 +162,6 @@ def get_sub(user_id):
         (user_id,)
     )
 
-# === ИСПРАВЛЕННАЯ ФУНКЦИЯ ===
 def create_sub(user_id, plan, days):
     now = datetime.now(timezone.utc)
     start_date = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -183,7 +205,7 @@ def main_menu():
         "keyboard": [
             [{"text": "🚀 Новый анализ"}, {"text": "📊 Мой прогресс"}],
             [{"text": "💎 Тарифы"}, {"text": "👥 B2B"}],
-            [{"text": "❓ Поддержка"}]
+            [{"text": "💰 Баланс"}, {"text": "❓ Поддержка"}]
         ],
         "resize_keyboard": True
     }
