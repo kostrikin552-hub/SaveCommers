@@ -31,6 +31,19 @@ def send_error_to_admin(admin_id, text, bot_token):
     except:
         pass
 
+def notify_admin_withdraw(admin_id, bot_token, user_id, amount_rub, method, details, bank, full_name):
+    text = (
+        f"💰 <b>НОВАЯ ЗАЯВКА НА ВЫВОД</b>\n"
+        f"👤 ID пользователя: {user_id}\n"
+        f"💵 Сумма: {amount_rub:.2f} ₽\n"
+        f"📱 Способ: {method}\n"
+        f"🔢 Реквизиты: {details}\n"
+        f"🏦 Банк: {bank}\n"
+        f"👤 ФИО: {full_name}\n"
+        f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    )
+    send_msg(admin_id, text, bot_token=bot_token)
+
 def check_pending_payments(yookassa_shop_id, yookassa_secret_key):
     while True:
         try:
@@ -49,13 +62,17 @@ def check_pending_payments(yookassa_shop_id, yookassa_secret_key):
                         db_execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (payment_id,))
                         days = 30
                         create_sub(payment["user_id"], payment["plan_type"], days)
+                        try:
+                            from .models_referrals import award_referral_bonus
+                            award_referral_bonus(payment["user_id"], payment["amount"])
+                        except:
+                            pass
                     elif status in ("canceled", "expired"):
                         db_execute("UPDATE payments SET status = 'failed' WHERE payment_id = ?", (payment_id,))
         except Exception as e:
             logger.error(f"Payment checker error: {e}")
         time.sleep(3600)
 
-# === ИСПРАВЛЕННАЯ ФУНКЦИЯ ===
 def notif_loop(bot_token, admin_id):
     while True:
         try:
