@@ -62,7 +62,6 @@ def init_db():
             negatives TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
-        # Новые таблицы для рефералов
         c.execute('''CREATE TABLE IF NOT EXISTS referrals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             referrer_id INTEGER,
@@ -140,15 +139,12 @@ def get_sub(user_id):
         (user_id,)
     )
 
+# === ИСПРАВЛЕННАЯ ФУНКЦИЯ ===
 def create_sub(user_id, plan, days):
-    # Вычисляем даты в Python
     now = datetime.now(timezone.utc)
     start_date = now.strftime("%Y-%m-%d %H:%M:%S")
     end_date = (now + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
-    db_execute(
-        "UPDATE subscriptions SET is_active = 0 WHERE user_id = ?",
-        (user_id,)
-    )
+    db_execute("UPDATE subscriptions SET is_active = 0 WHERE user_id = ?", (user_id,))
     db_execute(
         "INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (?, ?, 'active', ?, ?, 1)",
         (user_id, plan, start_date, end_date)
@@ -182,7 +178,6 @@ def generate_signed_url(user_id, has_sub, secret_key, webapp_url):
     signature = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{webapp_url}?user_id={user_id}&ts={timestamp}&sub={has_sub}&sig={signature}"
 
-# Клавиатуры
 def main_menu():
     return {
         "keyboard": [
@@ -201,4 +196,4 @@ def tariffs_kb():
             [{"text": "🏢 B2B 4990₽/мес (до 10 чел)", "callback_data": "tariff_b2b"}],
             [{"text": "🎁 Активировать 3 дня бесплатно", "callback_data": "trial"}]
         ]
-            }
+    }
