@@ -7,7 +7,6 @@ from .config_db import db_fetchall, db_execute, get_sub, create_sub
 
 logger = logging.getLogger(__name__)
 
-# Исправлено: bot_token идёт перед kb=None
 def send_msg(chat_id, text, bot_token, kb=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     if kb:
@@ -17,7 +16,6 @@ def send_msg(chat_id, text, bot_token, kb=None):
     except Exception as e:
         logger.error(f"Ошибка отправки сообщения: {e}")
 
-# Исправлено: bot_token идёт перед text="" (теперь обязательный параметр)
 def answer_cb(cb_id, bot_token, text=""):
     try:
         requests.post(
@@ -57,6 +55,7 @@ def check_pending_payments(yookassa_shop_id, yookassa_secret_key):
             logger.error(f"Payment checker error: {e}")
         time.sleep(3600)
 
+# === ИСПРАВЛЕННАЯ ФУНКЦИЯ ===
 def notif_loop(bot_token, admin_id):
     while True:
         try:
@@ -64,7 +63,8 @@ def notif_loop(bot_token, admin_id):
                 "SELECT * FROM subscriptions WHERE is_active = 1 AND end_date <= datetime('now', '+3 days') AND end_date > datetime('now')"
             )
             for sub in expiring:
-                days = (datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S") - datetime.now(timezone.utc)).days
+                end_dt = datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                days = (end_dt - datetime.now(timezone.utc)).days
                 send_msg(sub["user_id"], f"⏳ Подписка истекает через {days} дн.", bot_token=bot_token)
                 time.sleep(0.5)
             expired = db_fetchall(
