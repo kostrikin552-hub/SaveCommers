@@ -1,5 +1,5 @@
 // ================================================================
-// ЧАСТЬ 1: ИНИЦИАЛИЗАЦИЯ, ШАБЛОНЫ, ПРОВЕРКА ПОДПИСИ, 
+// ЧАСТЬ 1: ИНИЦИАЛИЗАЦИЯ, ШАБЛОНЫ, ПРОВЕРКА ПОДПИСИ,
 // АНАЛИЗ КОНТЕКСТА И ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ================================================================
 
@@ -8,7 +8,14 @@ const userId = urlParams.get('user_id');
 const timestamp = urlParams.get('ts');
 const hasSubParam = urlParams.get('sub');
 const signature = urlParams.get('sig');
+const backendUrl = urlParams.get('backend_url') || '';
 const SECRET_KEY = 'my_super_secret_key_1234';
+
+// Единый клиент API
+function api(path, options = {}) {
+    const url = (backendUrl + path).replace(/([^:]\/)\/+/g, '$1');
+    return fetch(url, options);
+}
 
 const templates = {
     ecommerce: `Клиент: Здравствуйте, нужен сайт для интернет-магазина, сколько будет стоить?
@@ -73,20 +80,64 @@ const hasSub = hasSubParam === '1';
 let verified = false;
 let firstAnalysisDone = false;
 
-// --- НОВАЯ ФУНКЦИЯ: АНАЛИЗ КОНТЕКСТА ---
-function analyzeContext(clientMsgs, managerMsgs) {
+// Элементы DOM
+const templateSelect = document.getElementById('template-select');
+const dialogInput = document.getElementById('dialog-input');
+const analyzeBtn = document.getElementById('analyze-btn');
+const exampleBtn = document.getElementById('example-btn');
+const stepUpload = document.getElementById('step-upload');
+const stepResult = document.getElementById('step-result');
+
+// Шаблоны
+templateSelect.addEventListener('change', function() {
+    const val = this.value;
+    if (val && templates[val]) {
+        dialogInput.value = templates[val];
+    }
+});
+
+exampleBtn.addEventListener('click', function() {
+    dialogInput.value = `Клиент: Здравствуйте, нужно создать сайт, сколько будет стоить?
+Вы: Здравствуйте, давайте уточним задачу. Для какого бизнеса сайт?
+Клиент: Для интернет-магазина одежды.
+Вы: Отлично. А какой бюджет вы рассматриваете?
+Клиент: Около 50 тысяч.
+Вы: Понял. Тогда я подготовлю коммерческое предложение. Через сколько дней вам нужен готовый сайт?
+Клиент: Через 2 недели.
+Вы: Хорошо. Тогда завтра отправлю договор и счёт на предоплату. Начинаем через день. Подходит?
+Клиент: Да, отлично.`;
+});
+
+// Проверка подписи
+verifySignature().then(ok => {
+    if (!ok) {
+        analyzeBtn.disabled = true;
+        analyzeBtn.textContent = '⛔ Доступ запрещён';
+        return;
+    }
+    verified = true;
+    analyzeBtn.disabled = false;
+    analyzeBtn.textContent = '🔍 Анализировать';
+});
+
+// ================================================================
+// КОНТЕКСТНАЯ ГЕНЕРАЦИЯ ОТВЕТОВ (вспомогательные функции)
+// ================================================================
+
+function analyzeFullContext(clientMsgs, managerMsgs) {
     const fullClient = clientMsgs.map(m => m.text.toLowerCase()).join(' ');
     const fullManager = managerMsgs.map(m => m.text.toLowerCase()).join(' ');
     const full = fullClient + ' ' + fullManager;
     
-    let topics = {
+    const topics = {
         price: /цена|стоимость|сколько стоит|бюджет|дорого|дешево/.test(full),
         timing: /срок|когда|за сколько дней|за сколько|через сколько|скорость|быстро/.test(full),
         quality: /качество|надёжно|надёжность|гарантия|проверено|опыт|результат/.test(full),
         guarantee: /гарантия|возврат|ручаетесь|уверены|безопасность/.test(full),
         comparison: /чем лучше|отличие|сравни|аналоги|конкуренты/.test(full),
-        objection: /дорого|не устраивает|сомневаюсь|подумаю|посмотрю|не готов/.test(full)
+        objection: /дорого|не устраивает|сомневаюсь|подумаю|посмотрю|не готов|позже/.test(full)
     };
+    
     let mainTopic = 'general';
     if (topics.objection) mainTopic = 'objection';
     else if (topics.price) mainTopic = 'price';
@@ -94,76 +145,97 @@ function analyzeContext(clientMsgs, managerMsgs) {
     else if (topics.quality) mainTopic = 'quality';
     else if (topics.comparison) mainTopic = 'comparison';
     else if (topics.guarantee) mainTopic = 'guarantee';
-    return mainTopic;
+    
+    let tone = 'neutral';
+    if (/спасибо|отлично|хорошо|согласен|устраивает/.test(fullClient)) tone = 'positive';
+    else if (/не|нет|но|однако|сомневаюсь|подумаю/.test(fullClient)) tone = 'negative';
+    
+    return { mainTopic, tone };
 }
 
-// --- УЛУЧШЕННАЯ ГЕНЕРАЦИЯ ОТВЕТОВ ---
-function genDraft(client, manager, err, mainTopic) {
-    let soft, business, expert;
-    const lastClient = client[client.length-1]?.text || '';
-    const allClient = client.map(m => m.text).join(' ');
+function genDraft(clientMsgs, managerMsgs, err, context) {
+    const { mainTopic, tone } = context;
+    const lastClient = clientMsgs[clientMsgs.length-1]?.text || '';
     
     const templatesByTopic = {
         price: {
-            soft: 'Понимаю, что цена – важный фактор. Давайте вместе посмотрим, из чего она складывается, и я покажу, как это окупается. Если готовы, давайте разберём ваш бюджет подробнее.',
-            business: 'Благодарю за вопрос о цене. Мы предлагаем гибкие условия: оплата частями или скидка при долгосрочном сотрудничестве. Расскажите о ваших ожиданиях по бюджету, я подберу оптимальный вариант.',
-            expert: 'На основе моего опыта, клиенты получают ROI в среднем через 3 месяца. Давайте я покажу вам кейс из вашей ниши, где мы добились +25% выручки. Когда вам удобно созвониться для детального расчёта?'
+            soft: {
+                positive: 'Рад, что цена вас устраивает. Давайте зафиксируем её и перейдём к деталям?',
+                negative: 'Понимаю, что цена – важный фактор. Давайте вместе посмотрим, из чего она складывается, и я покажу, как это окупается.',
+                neutral: 'Цена – важный момент. Давайте разберём, что входит в стоимость, и я покажу выгоду для вас.'
+            },
+            business: {
+                positive: 'Отлично, цена согласована. Переходим к следующему шагу – подписанию договора.',
+                negative: 'Благодарю за вопрос о цене. Мы предлагаем гибкие условия: оплата частями или скидка при долгосрочном сотрудничестве.',
+                neutral: 'Предлагаю обсудить бюджет. Я подберу оптимальный вариант под ваши задачи.'
+            },
+            expert: {
+                positive: 'На основе моего опыта, клиенты получают ROI в среднем через 3 месяца. Хотите увидеть расчёты?',
+                negative: 'Хороший вопрос о цене. Обычно клиенты выбирают комплексное решение, потому что оно даёт наибольшую выгоду.',
+                neutral: 'Исходя из практики, оптимальный бюджет для ваших задач – около X. Давайте сверим ожидания.'
+            }
         },
         timing: {
-            soft: 'Сроки – важный пункт. Давайте я расскажу, как мы обычно работаем, и предложу график, который вам подойдёт. Начнём с согласования этапов?',
-            business: 'Мы можем уложиться в ваши сроки, если начнём уже завтра. Я подготовлю для вас дорожную карту и план действий. Когда вам удобно обсудить детали?',
-            expert: 'Исходя из нашей практики, оптимальный срок – 10 рабочих дней. Но я могу предложить экспресс-режим за дополнительную плату, если нужно быстрее. Какой вариант вам ближе?'
+            soft: 'Сроки – важный пункт. Давайте я расскажу, как мы обычно работаем, и предложу график, который вам подойдёт.',
+            business: 'Мы можем уложиться в ваши сроки, если начнём уже завтра. Я подготовлю дорожную карту.',
+            expert: 'Исходя из нашей практики, оптимальный срок – 10 рабочих дней. Но я могу предложить экспресс-режим.'
         },
         quality: {
-            soft: 'Качество – то, на чём мы не экономим. Я покажу вам примеры наших работ и расскажу, как мы контролируем каждый этап. Это поможет вам принять решение.',
-            business: 'У нас есть система проверки качества: каждый проект проходит независимую оценку. Я могу предоставить вам отзывы клиентов и результаты аудита. Хотите ознакомиться?',
-            expert: 'Мы используем методологию Agile и постоянно улучшаем процессы. За последний год наши клиенты отметили рост удовлетворённости на 18%. Давайте обсудим, что для вас важно в первую очередь.'
+            soft: 'Качество – то, на чём мы не экономим. Я покажу вам примеры наших работ и расскажу, как мы контролируем каждый этап.',
+            business: 'У нас есть система проверки качества: каждый проект проходит независимую оценку. Я могу предоставить вам отзывы клиентов.',
+            expert: 'Мы используем методологию Agile и постоянно улучшаем процессы. За последний год наши клиенты отметили рост удовлетворённости на 18%.'
         },
         comparison: {
-            soft: 'Сравнение – разумный подход. Я могу выделить наши ключевые преимущества и показать, чем мы отличаемся от конкурентов. Какие критерии для вас самые важные?',
-            business: 'Наши клиенты выбирают нас за: 1) персонализированный подход, 2) гибкость и 3) поддержку 24/7. Если вам нужно, я могу подготовить сравнительную таблицу с ближайшими альтернативами.',
-            expert: 'Анализ рынка показывает, что наш продукт закрывает на 30% больше задач благодаря интеграции с CRM. Я могу провести для вас бесплатный сравнительный анализ с вашим текущим инструментом.'
+            soft: 'Сравнение – разумный подход. Я могу выделить наши ключевые преимущества и показать, чем мы отличаемся от конкурентов.',
+            business: 'Наши клиенты выбирают нас за: 1) персонализированный подход, 2) гибкость и 3) поддержку 24/7.',
+            expert: 'Анализ рынка показывает, что наш продукт закрывает на 30% больше задач благодаря интеграции с CRM.'
         },
         objection: {
-            soft: 'Я слышу ваши сомнения. Это нормально. Давайте я подробнее расскажу, как мы решаем подобные задачи, и покажу реальные примеры. Начнём с тех пунктов, которые вас беспокоят?',
-            business: 'Благодарю за открытость. Мы разработали специальные предложения для тех, кто сомневается – например, тестовый период или рассрочка. Это поможет вам принять решение без риска.',
-            expert: 'Опираясь на мой опыт, основные возражения возникают из-за неполной информации. Давайте я отвечу на все ваши вопросы и покажу, как выглядит результат на практике. Вы готовы начать?'
+            soft: 'Я слышу ваши сомнения. Это нормально. Давайте я подробнее расскажу, как мы решаем подобные задачи, и покажу реальные примеры.',
+            business: 'Благодарю за открытость. Мы разработали специальные предложения для тех, кто сомневается – например, тестовый период или рассрочка.',
+            expert: 'Опираясь на мой опыт, основные возражения возникают из-за неполной информации. Давайте я отвечу на все ваши вопросы и покажу, как выглядит результат на практике.'
         },
         general: {
-            soft: 'Я вижу, что вы заинтересованы, но у вас есть вопросы. Давайте я расскажу о нашем подходе и покажу, как мы можем помочь именно вам. С чего бы вы хотели начать?',
-            business: 'Благодарю за ваш запрос. Предлагаю перейти к конкретным шагам: я подготовлю для вас персональное предложение и мы обсудим детали. Скажите, что для вас сейчас самое важное?',
-            expert: 'Исходя из моего анализа, я бы рекомендовал начать с диагностики вашего текущего процесса. Это займёт 15 минут, но даст полную картину. Когда вам удобно это сделать?'
+            soft: 'Я вижу, что вы заинтересованы, но у вас есть вопросы. Давайте я расскажу о нашем подходе и покажу, как мы можем помочь именно вам.',
+            business: 'Благодарю за ваш запрос. Предлагаю перейти к конкретным шагам: я подготовлю для вас персональное предложение.',
+            expert: 'Исходя из моего анализа, я бы рекомендовал начать с диагностики вашего текущего процесса.'
         }
-    };
-
-    const errorAdjust = (text, err) => {
-        if (err && err.name && err.name.includes('Приветствие')) {
-            text += ' Не забудьте начать диалог с приветствия – это создаёт доверие.';
-        }
-        if (err && err.name && err.name.includes('Вопросы')) {
-            text += ' Постарайтесь задавать больше открытых вопросов – это поможет выявить потребности.';
-        }
-        if (err && err.name && err.name.includes('Эмпатия')) {
-            text += ' Клиентам важно чувствовать, что вы их понимаете – добавляйте фразы поддержки.';
-        }
-        return text;
     };
 
     let t = templatesByTopic[mainTopic] || templatesByTopic.general;
-    soft = errorAdjust(t.soft, err);
-    business = errorAdjust(t.business, err);
-    expert = errorAdjust(t.expert, err);
-
-    if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(soft)) {
-        soft += '\n\nЕсли это звучит для вас разумно, давайте обсудим детали. Как вам такой подход?';
-    }
-    if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(business)) {
-        business += '\n\nПредлагаю перейти к следующему шагу. Какие вопросы у вас остались?';
-    }
-    if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(expert)) {
-        expert += '\n\nРекомендую начать с анализа. Когда вам удобно созвониться?';
+    let response;
+    if (typeof t === 'object' && !Array.isArray(t)) {
+        if (t[tone]) {
+            response = t[tone];
+        } else {
+            response = t.neutral || Object.values(t)[0];
+        }
+    } else {
+        response = t;
     }
 
+    if (typeof response === 'object' && !Array.isArray(response)) {
+        response = response[tone] || response.neutral || Object.values(response)[0];
+    }
+
+    if (err && err.name && err.name.includes('Приветствие')) {
+        response += ' Не забудьте начать диалог с приветствия – это создаёт доверие.';
+    }
+    if (err && err.name && err.name.includes('Вопросы')) {
+        response += ' Постарайтесь задавать больше открытых вопросов – это поможет выявить потребности.';
+    }
+    if (err && err.name && err.name.includes('Эмпатия')) {
+        response += ' Клиентам важно чувствовать, что вы их понимаете – добавляйте фразы поддержки.';
+    }
+
+    if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(response)) {
+        response += '\n\nЕсли это звучит для вас разумно, давайте обсудим детали. Как вам такой подход?';
+    }
+
+    const soft = '😊 ' + response;
+    const business = '📊 ' + response;
+    const expert = '🧠 ' + response;
+    
     return { soft, business, expert };
 }
 
@@ -185,50 +257,17 @@ function fallbackCopy(text) {
     alert('✅ Скопировано!');
 }
 
-// (продолжение в Части 2)
 // ================================================================
-// ЧАСТЬ 2: ОБРАБОТЧИКИ СОБЫТИЙ, ОСНОВНОЙ АНАЛИЗ, 
-// ОТРИСОВКА РЕЗУЛЬТАТА И СОХРАНЕНИЕ ИСТОРИИ
+// ЧАСТЬ 2: ОСНОВНОЙ ОБРАБОТЧИК АНАЛИЗА, ОТРИСОВКА РЕЗУЛЬТАТА,
+// СОХРАНЕНИЕ ИСТОРИИ И РЕФЕРАЛЬНЫЙ БОНУС
 // ================================================================
 
-document.getElementById('template-select').addEventListener('change', function() {
-    const val = this.value;
-    if (val && templates[val]) {
-        document.getElementById('dialog-input').value = templates[val];
-    }
-});
-
-document.getElementById('example-btn').addEventListener('click', function() {
-    document.getElementById('dialog-input').value = `Клиент: Здравствуйте, нужно создать сайт, сколько будет стоить?
-Вы: Здравствуйте, давайте уточним задачу. Для какого бизнеса сайт?
-Клиент: Для интернет-магазина одежды.
-Вы: Отлично. А какой бюджет вы рассматриваете?
-Клиент: Около 50 тысяч.
-Вы: Понял. Тогда я подготовлю коммерческое предложение. Через сколько дней вам нужен готовый сайт?
-Клиент: Через 2 недели.
-Вы: Хорошо. Тогда завтра отправлю договор и счёт на предоплату. Начинаем через день. Подходит?
-Клиент: Да, отлично.`;
-});
-
-verifySignature().then(ok => {
-    if (!ok) {
-        document.getElementById('analyze-btn').disabled = true;
-        document.getElementById('analyze-btn').textContent = '⛔ Доступ запрещён';
-        return;
-    }
-    verified = true;
-    document.getElementById('analyze-btn').disabled = false;
-    document.getElementById('analyze-btn').textContent = '🔍 Анализировать';
-});
-
-// --- ОСНОВНОЙ ОБРАБОТЧИК АНАЛИЗА ---
-document.getElementById('analyze-btn').addEventListener('click', function() {
+analyzeBtn.addEventListener('click', function() {
     if (!verified) {
         alert('Проверка подписи не пройдена');
         return;
     }
-    const input = document.getElementById('dialog-input');
-    const text = input.value.trim();
+    const text = dialogInput.value.trim();
     if (!text) return alert('Вставьте текст переписки');
 
     function parseDialog(t) {
@@ -270,12 +309,11 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
     if (!managerMsgs.length) return alert('Не найдены сообщения от "Вы" или "Менеджер"');
     const full = managerMsgs.map(m => m.text).join(' ').toLowerCase();
     const lastManager = managerMsgs[managerMsgs.length-1]?.text || '';
-    const lastClient = clientMsgs[clientMsgs.length-1]?.text || '';
 
-    // --- АНАЛИЗ КОНТЕКСТА ---
-    const mainTopic = analyzeContext(clientMsgs, managerMsgs);
+    // Анализ контекста
+    const context = analyzeFullContext(clientMsgs, managerMsgs);
 
-    // --- ПРОВЕРКА КРИТЕРИЕВ (30 правил) ---
+    // 30 правил
     const rules = [
         {id:'greeting', name:'Приветствие', w:3, ch:()=>/здравствуй|добрый день|привет|доброе утро/.test(full), neg:'✖ Нет приветствия', pos:'✔ Поприветствовали клиента', sug:'Начинайте с приветствия.'},
         {id:'empathy1', name:'Эмпатия (понимание)', w:4, ch:()=>/понимаю|слышу|согласен|разделяю/.test(full), neg:'✖ Нет фраз понимания', pos:'✔ Проявили понимание', sug:'Используйте "понимаю", "слышу".'},
@@ -316,16 +354,14 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
     if(firstFailed) { err = {name: firstFailed.name, desc: neg[rules.indexOf(firstFailed)].replace('✖ ',''), sug: firstFailed.sug}; }
     else { err = {name: 'Отличный диалог!', desc: 'Все правила выполнены', sug: 'Продолжайте в том же духе!'}; }
 
-    // --- ГЕНЕРАЦИЯ ОТВЕТОВ С УЧЁТОМ КОНТЕКСТА ---
-    const drafts = genDraft(clientMsgs, managerMsgs, err, mainTopic);
+    const drafts = genDraft(clientMsgs, managerMsgs, err, context);
 
-    document.getElementById('step-upload').style.display='none';
-    const container = document.getElementById('step-result');
-    container.style.display='block';
+    stepUpload.style.display = 'none';
+    stepResult.style.display = 'block';
     const scoreColor = score>=70 ? 'good' : (score>=40 ? 'medium' : 'bad');
     let posHtml = pos.slice(0,10).map(p => `<div class="feedback-item positive">${p}</div>`).join('');
     let negHtml = neg.slice(0,10).map(n => `<div class="feedback-item negative">${n}</div>`).join('');
-    container.innerHTML = `
+    stepResult.innerHTML = `
         <div class="score ${scoreColor}">${score}/100</div>
         <div style="text-align:center;color:#4a7b6e;margin-bottom:12px;">Индекс качества диалога</div>
         <div class="error-box"><strong>🔥 Главная ошибка</strong><p><strong>${err.name}</strong></p><p>${err.desc}</p></div>
@@ -343,7 +379,7 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
         <button onclick="location.reload()" style="background:#e8f2ef;color:#0f2e2a;">🔄 Новый анализ</button>
     `;
 
-    container.querySelectorAll('.draft-buttons button').forEach(b => {
+    stepResult.querySelectorAll('.draft-buttons button').forEach(b => {
         b.addEventListener('click', function() {
             if (this.classList.contains('expert-locked')) {
                 alert('🔒 Экспертный ответ доступен только по подписке. Оформите её в боте.');
@@ -364,9 +400,8 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
         }
     });
 
-    // --- СОХРАНЕНИЕ АНАЛИЗА В ИСТОРИЮ ---
     if (userId) {
-        fetch('/api/save_analysis', {
+        api('/api/save_analysis', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -377,18 +412,14 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
                 negatives: neg.join('; ')
             })
         }).then(res => {
-            if (!res.ok) {
-                console.error('Save analysis failed:', res.status);
-            } else {
-                console.log('Analysis saved successfully');
-            }
+            if (!res.ok) console.error('Save analysis failed:', res.status);
+            else console.log('Analysis saved');
         }).catch(err => console.error('Save analysis error:', err));
     }
 
-    // --- ПЕРВЫЙ АНАЛИЗ (РЕФЕРАЛЬНЫЙ БОНУС) ---
     if (!firstAnalysisDone && userId) {
         firstAnalysisDone = true;
-        fetch('/api/first_analysis', {
+        api('/api/first_analysis', {
             method: 'POST',
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({user_id: parseInt(userId)})
