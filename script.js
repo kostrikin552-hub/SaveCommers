@@ -1,5 +1,6 @@
 // ================================================================
-// ЧАСТЬ 1: ИНИЦИАЛИЗАЦИЯ, ШАБЛОНЫ, ПРОВЕРКА ПОДПИСИ, ОБРАБОТЧИКИ
+// ЧАСТЬ 1: ИНИЦИАЛИЗАЦИЯ, ШАБЛОНЫ, ПРОВЕРКА ПОДПИСИ, 
+// АНАЛИЗ КОНТЕКСТА И ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ================================================================
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -72,6 +73,124 @@ const hasSub = hasSubParam === '1';
 let verified = false;
 let firstAnalysisDone = false;
 
+// --- НОВАЯ ФУНКЦИЯ: АНАЛИЗ КОНТЕКСТА ---
+function analyzeContext(clientMsgs, managerMsgs) {
+    const fullClient = clientMsgs.map(m => m.text.toLowerCase()).join(' ');
+    const fullManager = managerMsgs.map(m => m.text.toLowerCase()).join(' ');
+    const full = fullClient + ' ' + fullManager;
+    
+    let topics = {
+        price: /цена|стоимость|сколько стоит|бюджет|дорого|дешево/.test(full),
+        timing: /срок|когда|за сколько дней|за сколько|через сколько|скорость|быстро/.test(full),
+        quality: /качество|надёжно|надёжность|гарантия|проверено|опыт|результат/.test(full),
+        guarantee: /гарантия|возврат|ручаетесь|уверены|безопасность/.test(full),
+        comparison: /чем лучше|отличие|сравни|аналоги|конкуренты/.test(full),
+        objection: /дорого|не устраивает|сомневаюсь|подумаю|посмотрю|не готов/.test(full)
+    };
+    let mainTopic = 'general';
+    if (topics.objection) mainTopic = 'objection';
+    else if (topics.price) mainTopic = 'price';
+    else if (topics.timing) mainTopic = 'timing';
+    else if (topics.quality) mainTopic = 'quality';
+    else if (topics.comparison) mainTopic = 'comparison';
+    else if (topics.guarantee) mainTopic = 'guarantee';
+    return mainTopic;
+}
+
+// --- УЛУЧШЕННАЯ ГЕНЕРАЦИЯ ОТВЕТОВ ---
+function genDraft(client, manager, err, mainTopic) {
+    let soft, business, expert;
+    const lastClient = client[client.length-1]?.text || '';
+    const allClient = client.map(m => m.text).join(' ');
+    
+    const templatesByTopic = {
+        price: {
+            soft: 'Понимаю, что цена – важный фактор. Давайте вместе посмотрим, из чего она складывается, и я покажу, как это окупается. Если готовы, давайте разберём ваш бюджет подробнее.',
+            business: 'Благодарю за вопрос о цене. Мы предлагаем гибкие условия: оплата частями или скидка при долгосрочном сотрудничестве. Расскажите о ваших ожиданиях по бюджету, я подберу оптимальный вариант.',
+            expert: 'На основе моего опыта, клиенты получают ROI в среднем через 3 месяца. Давайте я покажу вам кейс из вашей ниши, где мы добились +25% выручки. Когда вам удобно созвониться для детального расчёта?'
+        },
+        timing: {
+            soft: 'Сроки – важный пункт. Давайте я расскажу, как мы обычно работаем, и предложу график, который вам подойдёт. Начнём с согласования этапов?',
+            business: 'Мы можем уложиться в ваши сроки, если начнём уже завтра. Я подготовлю для вас дорожную карту и план действий. Когда вам удобно обсудить детали?',
+            expert: 'Исходя из нашей практики, оптимальный срок – 10 рабочих дней. Но я могу предложить экспресс-режим за дополнительную плату, если нужно быстрее. Какой вариант вам ближе?'
+        },
+        quality: {
+            soft: 'Качество – то, на чём мы не экономим. Я покажу вам примеры наших работ и расскажу, как мы контролируем каждый этап. Это поможет вам принять решение.',
+            business: 'У нас есть система проверки качества: каждый проект проходит независимую оценку. Я могу предоставить вам отзывы клиентов и результаты аудита. Хотите ознакомиться?',
+            expert: 'Мы используем методологию Agile и постоянно улучшаем процессы. За последний год наши клиенты отметили рост удовлетворённости на 18%. Давайте обсудим, что для вас важно в первую очередь.'
+        },
+        comparison: {
+            soft: 'Сравнение – разумный подход. Я могу выделить наши ключевые преимущества и показать, чем мы отличаемся от конкурентов. Какие критерии для вас самые важные?',
+            business: 'Наши клиенты выбирают нас за: 1) персонализированный подход, 2) гибкость и 3) поддержку 24/7. Если вам нужно, я могу подготовить сравнительную таблицу с ближайшими альтернативами.',
+            expert: 'Анализ рынка показывает, что наш продукт закрывает на 30% больше задач благодаря интеграции с CRM. Я могу провести для вас бесплатный сравнительный анализ с вашим текущим инструментом.'
+        },
+        objection: {
+            soft: 'Я слышу ваши сомнения. Это нормально. Давайте я подробнее расскажу, как мы решаем подобные задачи, и покажу реальные примеры. Начнём с тех пунктов, которые вас беспокоят?',
+            business: 'Благодарю за открытость. Мы разработали специальные предложения для тех, кто сомневается – например, тестовый период или рассрочка. Это поможет вам принять решение без риска.',
+            expert: 'Опираясь на мой опыт, основные возражения возникают из-за неполной информации. Давайте я отвечу на все ваши вопросы и покажу, как выглядит результат на практике. Вы готовы начать?'
+        },
+        general: {
+            soft: 'Я вижу, что вы заинтересованы, но у вас есть вопросы. Давайте я расскажу о нашем подходе и покажу, как мы можем помочь именно вам. С чего бы вы хотели начать?',
+            business: 'Благодарю за ваш запрос. Предлагаю перейти к конкретным шагам: я подготовлю для вас персональное предложение и мы обсудим детали. Скажите, что для вас сейчас самое важное?',
+            expert: 'Исходя из моего анализа, я бы рекомендовал начать с диагностики вашего текущего процесса. Это займёт 15 минут, но даст полную картину. Когда вам удобно это сделать?'
+        }
+    };
+
+    const errorAdjust = (text, err) => {
+        if (err && err.name && err.name.includes('Приветствие')) {
+            text += ' Не забудьте начать диалог с приветствия – это создаёт доверие.';
+        }
+        if (err && err.name && err.name.includes('Вопросы')) {
+            text += ' Постарайтесь задавать больше открытых вопросов – это поможет выявить потребности.';
+        }
+        if (err && err.name && err.name.includes('Эмпатия')) {
+            text += ' Клиентам важно чувствовать, что вы их понимаете – добавляйте фразы поддержки.';
+        }
+        return text;
+    };
+
+    let t = templatesByTopic[mainTopic] || templatesByTopic.general;
+    soft = errorAdjust(t.soft, err);
+    business = errorAdjust(t.business, err);
+    expert = errorAdjust(t.expert, err);
+
+    if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(soft)) {
+        soft += '\n\nЕсли это звучит для вас разумно, давайте обсудим детали. Как вам такой подход?';
+    }
+    if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(business)) {
+        business += '\n\nПредлагаю перейти к следующему шагу. Какие вопросы у вас остались?';
+    }
+    if (!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(expert)) {
+        expert += '\n\nРекомендую начать с анализа. Когда вам удобно созвониться?';
+    }
+
+    return { soft, business, expert };
+}
+
+function copyText(text) {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(()=>alert('✅ Скопировано!')).catch(()=>fallbackCopy(text));
+    } else {
+        fallbackCopy(text);
+    }
+}
+
+function fallbackCopy(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    alert('✅ Скопировано!');
+}
+
+// (продолжение в Части 2)
+// ================================================================
+// ЧАСТЬ 2: ОБРАБОТЧИКИ СОБЫТИЙ, ОСНОВНОЙ АНАЛИЗ, 
+// ОТРИСОВКА РЕЗУЛЬТАТА И СОХРАНЕНИЕ ИСТОРИИ
+// ================================================================
+
 document.getElementById('template-select').addEventListener('change', function() {
     const val = this.value;
     if (val && templates[val]) {
@@ -102,10 +221,7 @@ verifySignature().then(ok => {
     document.getElementById('analyze-btn').textContent = '🔍 Анализировать';
 });
 
-// ================================================================
-// ЧАСТЬ 2: ОСНОВНОЙ ОБРАБОТЧИК АНАЛИЗА, ОТРИСОВКА РЕЗУЛЬТАТОВ, СОХРАНЕНИЕ
-// ================================================================
-
+// --- ОСНОВНОЙ ОБРАБОТЧИК АНАЛИЗА ---
 document.getElementById('analyze-btn').addEventListener('click', function() {
     if (!verified) {
         alert('Проверка подписи не пройдена');
@@ -156,6 +272,10 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
     const lastManager = managerMsgs[managerMsgs.length-1]?.text || '';
     const lastClient = clientMsgs[clientMsgs.length-1]?.text || '';
 
+    // --- АНАЛИЗ КОНТЕКСТА ---
+    const mainTopic = analyzeContext(clientMsgs, managerMsgs);
+
+    // --- ПРОВЕРКА КРИТЕРИЕВ (30 правил) ---
     const rules = [
         {id:'greeting', name:'Приветствие', w:3, ch:()=>/здравствуй|добрый день|привет|доброе утро/.test(full), neg:'✖ Нет приветствия', pos:'✔ Поприветствовали клиента', sug:'Начинайте с приветствия.'},
         {id:'empathy1', name:'Эмпатия (понимание)', w:4, ch:()=>/понимаю|слышу|согласен|разделяю/.test(full), neg:'✖ Нет фраз понимания', pos:'✔ Проявили понимание', sug:'Используйте "понимаю", "слышу".'},
@@ -196,32 +316,8 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
     if(firstFailed) { err = {name: firstFailed.name, desc: neg[rules.indexOf(firstFailed)].replace('✖ ',''), sug: firstFailed.sug}; }
     else { err = {name: 'Отличный диалог!', desc: 'Все правила выполнены', sug: 'Продолжайте в том же духе!'}; }
 
-    function genDraft(client, err) {
-        let soft, business, expert;
-        const hasPriceObj = /дорого|цена высокая|дороговато|подумаю/.test(client.toLowerCase());
-        if(hasPriceObj) {
-            soft = 'Понимаю, что цена — важный фактор. Давайте вместе посмотрим, что входит в стоимость, и я покажу, как это окупается.';
-            business = 'Спасибо за вопрос о цене. Мы предлагаем гибкие условия. Расскажите о вашем бюджете, и я подберу оптимальный вариант.';
-            expert = 'Хороший вопрос. На основе моего опыта, клиенты чаще всего выбирают комплексное решение, потому что оно даёт наибольшую выгоду.';
-        } else if(err.name.includes('Вопросы')) {
-            soft = 'Давайте уточним несколько моментов, чтобы я мог предложить вам лучшее решение. Например, какие задачи вы хотите решить?';
-            business = 'Прежде чем перейти к обсуждению, разрешите задать несколько уточняющих вопросов. Это поможет нам быстрее найти оптимальное решение.';
-            expert = 'Чтобы предложить вам наилучший вариант, давайте уточним несколько ключевых деталей. Какую конкретно проблему вы хотите решить?';
-        } else if(err.name.includes('Эмпатия')) {
-            soft = 'Я слышу вас. Давайте вместе подумаем, как лучше решить эту задачу. Ваши пожелания очень важны.';
-            business = 'Благодарю за подробности. Я понимаю ваши опасения и готов предложить варианты, которые учтут все ваши требования.';
-            expert = 'Отличный вопрос. Я полностью разделяю ваше внимание к деталям и готов дать рекомендации, исходя из вашего запроса.';
-        } else {
-            soft = 'Понимаю ваше беспокойство. Давайте вместе разберёмся в этом вопросе. Если готовы продолжить, давайте обсудим детали.';
-            business = 'Благодарю за обращение. Исходя из вашего запроса, предлагаю перейти к следующему шагу. Какие вопросы у вас остались?';
-            expert = 'На основе моего опыта, рекомендую начать с анализа. Когда вам удобно созвониться?';
-        }
-        if(!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(soft)) soft += '\n\nЕсли это звучит для вас разумно, давайте обсудим детали. Как вам такой подход?';
-        if(!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(business)) business += '\n\nПредлагаю перейти к следующему шагу. Какие вопросы у вас остались?';
-        if(!/следующий|дальше|договор|счёт|бронирую|приступаю/.test(expert)) expert += '\n\nРекомендую начать с анализа. Когда вам удобно созвониться?';
-        return {soft, business, expert};
-    }
-    const drafts = genDraft(lastClient, err);
+    // --- ГЕНЕРАЦИЯ ОТВЕТОВ С УЧЁТОМ КОНТЕКСТА ---
+    const drafts = genDraft(clientMsgs, managerMsgs, err, mainTopic);
 
     document.getElementById('step-upload').style.display='none';
     const container = document.getElementById('step-result');
@@ -280,6 +376,12 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
                 positives: pos.join('; '),
                 negatives: neg.join('; ')
             })
+        }).then(res => {
+            if (!res.ok) {
+                console.error('Save analysis failed:', res.status);
+            } else {
+                console.log('Analysis saved successfully');
+            }
         }).catch(err => console.error('Save analysis error:', err));
     }
 
@@ -293,21 +395,3 @@ document.getElementById('analyze-btn').addEventListener('click', function() {
         }).catch(()=>{});
     }
 });
-
-function copyText(text) {
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(text).then(()=>alert('✅ Скопировано!')).catch(()=>fallbackCopy(text));
-    } else {
-        fallbackCopy(text);
-    }
-}
-
-function fallbackCopy(text) {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand('copy');
-    document.body.removeChild(textarea);
-    alert('✅ Скопировано!');
-        }
