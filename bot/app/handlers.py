@@ -28,7 +28,7 @@ def is_sub_active(user_id):
     sub = get_sub(user_id)
     if not sub:
         return False
-    return sub.get('is_active') == 1
+    return sub['is_active'] == 1
 
 def safe_html(text):
     return html.escape(str(text))
@@ -194,7 +194,7 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     end_dt = datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                     days_left = (end_dt - datetime.now(timezone.utc)).days
                     trial_msg = f"🎁 Осталось {days_left} дн. пробного периода\n" if days_left > 0 else "⛔ Пробный период истёк\n"
-                elif sub and sub.get("is_active") == 1:
+                elif sub and sub['is_active'] == 1:
                     trial_msg = f"🔓 Подписка {sub['plan_type'].upper()} до {sub['end_date']}\n"
                 else:
                     trial_msg = "⛔ Нет активной подписки\n"
@@ -208,12 +208,12 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 send_msg(chat_id, "🔓 Открываю...", bot_token=bot_token, kb=kb)
 
             elif text == "💎 Тарифы":
-                send_msg(chat_id, "💰 Выбери тариф:\n🔓 Pro 990₽/мес\n👑 Premium 1990₽/мес\n🏢 B2B 4990₽/мес", bot_token=bot_token, kb=tariffs_kb())
+                send_msg(chat_id, "💰 Выбери тариф:", bot_token=bot_token, kb=tariffs_kb(user_id))
 
             elif text == "📊 Мой прогресс":
                 sub = get_sub(user_id)
                 history = db_fetchall("SELECT * FROM analysis_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 5", (user_id,))
-                if sub and sub.get("is_active") == 1:
+                if sub and sub['is_active'] == 1:
                     ans = f"📈 Тариф: {sub['plan_type'].upper()}\nДо: {sub['end_date']}\n"
                 else:
                     ans = "📈 Нет активной подписки\n"
@@ -260,7 +260,7 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                         try:
                             target = int(parts[1])
                             sub = get_sub(target)
-                            status = f"Тариф: {sub['plan_type'].upper() if sub else 'Нет'}" if sub and sub.get('is_active') else "Нет активной подписки"
+                            status = f"Тариф: {sub['plan_type'].upper() if sub else 'Нет'}" if sub and sub['is_active'] else "Нет активной подписки"
                             send_msg(chat_id, f"Статус {target}: {status}", bot_token=bot_token)
                         except ValueError:
                             send_msg(chat_id, "❌ Неверный ID", bot_token=bot_token)
@@ -293,11 +293,15 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 return
             elif data == "trial":
                 active = get_sub(user_id)
-                if active and active.get('is_active') == 1:
+                if active and active['is_active'] == 1:
                     send_msg(chat_id, "❌ У вас уже есть активная подписка", bot_token=bot_token)
                 else:
-                    create_sub(user_id, "trial", 3)
-                    send_msg(chat_id, "✅ 3 дня бесплатно активированы!", bot_token=bot_token)
+                    trial_used = db_fetchone("SELECT 1 FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
+                    if trial_used:
+                        send_msg(chat_id, "❌ Вы уже активировали пробный период ранее", bot_token=bot_token)
+                    else:
+                        create_sub(user_id, "trial", 3)
+                        send_msg(chat_id, "✅ 3 дня бесплатно активированы!", bot_token=bot_token)
                 answer_cb(cb["id"], bot_token=bot_token)
                 return
             elif data == "create_company":
@@ -382,21 +386,7 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
         logger.error(error_text)
         send_error_to_admin(admin_id, error_text, bot_token)
 
+# Заглушка для get_updates (больше не используется, т.к. перешли на вебхук)
 def get_updates(offset, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username):
-    try:
-        url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
-        r = requests.get(url, params={"offset": offset, "timeout": 30}, timeout=35)
-        if r.status_code == 200:
-            data = r.json()
-            if data.get("ok"):
-                for u in data["result"]:
-                    offset = u["update_id"] + 1
-                    process_update(u, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username)
-        else:
-            logger.error(f"Ошибка getUpdates: статус {r.status_code}")
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Сетевая ошибка в getUpdates: {e}")
-    except Exception as e:
-        logger.error(f"Неизвестная ошибка в getUpdates: {e}")
-        send_error_to_admin(admin_id, f"Ошибка в getUpdates: {e}", bot_token)
+    logger.warning("get_updates вызван, но бот работает через вебхук")
     return offset
