@@ -1,5 +1,5 @@
 import uuid
-from .config_db import db_execute, db_fetchone, db_fetchall, get_sub, create_sub
+from .db import db_execute, db_fetchone, db_fetchall, get_sub, create_sub
 
 def get_referral_code(user_id):
     row = db_fetchone("SELECT code FROM user_ref_codes WHERE user_id = ?", (user_id,))
@@ -91,4 +91,4 @@ def get_withdraw_requests(user_id, status=None):
     return db_fetchall(
         "SELECT * FROM withdraw_requests WHERE user_id = ? ORDER BY created_at DESC",
         (user_id,)
-    )
+                     )
