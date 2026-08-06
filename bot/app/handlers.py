@@ -153,9 +153,9 @@ def show_balance_info(user_id, chat_id, bot_token, bot_username):
     ans += '• 5 дней Pro-подписки\n'
     ans += '• 20% от суммы его оплаты на баланс\n\n'
     ans += 'Минимальная сумма вывода: 500 ₽'
-    kb = None
-    if balance_kop >= 50000:
-        kb = {'inline_keyboard': [[{'text': '💳 Вывести', 'callback_data': 'referral_withdraw'}]]}
+    
+    # Кнопка "Вывести" показывается всегда
+    kb = {'inline_keyboard': [[{'text': '💳 Вывести', 'callback_data': 'referral_withdraw'}]]}
     send_msg(chat_id, ans, bot_token=bot_token, kb=kb)
 
 def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username):
@@ -346,7 +346,7 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
             elif data == 'referral_withdraw':
                 balance_kop = get_balance(user_id)
                 if balance_kop < 50000:
-                    send_msg(chat_id, '❌ Недостаточно средств для вывода (минимум 500 ₽)', bot_token=bot_token)
+                    send_msg(chat_id, '❌ НЕДОСТАТОЧНО СРЕДСТВ ДЛЯ ВЫВОДА (минимум 500 ₽)', bot_token=bot_token)
                     answer_cb(cb['id'], bot_token=bot_token)
                     return
                 kb = {
