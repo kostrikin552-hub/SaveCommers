@@ -30,12 +30,27 @@ PORT = int(os.getenv("PORT", 10000))
 offset = 0
 init_db()
 
-# --- Удаляем вебхук, чтобы использовать getUpdates ---
-try:
-    resp = requests.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook")
-    logger.info(f"Delete webhook response: {resp.status_code} - {resp.text}")
-except Exception as e:
-    logger.error(f"Failed to delete webhook: {e}")
+# --- Принудительное удаление вебхука с проверкой ---
+def delete_webhook():
+    url = f"https://api.telegram.org/bot{TOKEN}/deleteWebhook"
+    for attempt in range(5):
+        try:
+            resp = requests.get(url)
+            logger.info(f"Delete webhook attempt {attempt+1}: {resp.status_code} - {resp.text}")
+            if resp.status_code == 200 and resp.json().get("ok"):
+                return True
+        except Exception as e:
+            logger.error(f"Failed to delete webhook: {e}")
+        time.sleep(1)
+    return False
+
+if delete_webhook():
+    logger.info("Webhook deleted successfully")
+else:
+    logger.warning("Could not delete webhook, continuing anyway")
+
+# Дополнительная пауза, чтобы Telegram точно обработал удаление
+time.sleep(3)
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -101,6 +116,8 @@ if __name__ == "__main__":
     threading.Thread(target=check_pending_payments, args=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY), daemon=True).start()
     threading.Thread(target=notif_loop, args=(TOKEN, ADMIN_ID), daemon=True).start()
     threading.Thread(target=run_http, daemon=True).start()
+    # Небольшая пауза перед первым запросом getUpdates
+    time.sleep(2)
     while True:
         try:
             offset = get_updates(
