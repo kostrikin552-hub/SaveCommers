@@ -51,6 +51,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
             self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(b"SaleFlow bot is running")
         else:
@@ -59,9 +60,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_HEAD(self):
         self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
 
     def do_POST(self):
+        # Обработка CORS для всех POST
+        if self.path != "/webhook/telegram" and self.path != "/webhook/yookassa":
+            self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+        
+        # Вебхук Telegram
         if self.path == "/webhook/telegram":
             content_length = int(self.headers.get('Content-Length', 0))
             data = json.loads(self.rfile.read(content_length)) if content_length else {}
@@ -84,6 +100,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"OK")
             return
 
+        # Вебхук ЮKassa
         if self.path == "/webhook/yookassa":
             data = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))))
             if data.get("event") == "payment.succeeded":
@@ -98,34 +115,43 @@ class Handler(BaseHTTPRequestHandler):
                     db_execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (payment_id,))
                     amount_kop = int(float(amount) * 100)
                     award_referral_bonus(user_id, amount_kop)
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b"OK")
-            else:
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b"OK")
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
             return
 
-        # --- НОВЫЙ ЭНДПОИНТ ДЛЯ СОХРАНЕНИЯ АНАЛИЗА ---
+        # --- СОХРАНЕНИЕ АНАЛИЗА (С ДЕТАЛЬНЫМ ЛОГИРОВАНИЕМ) ---
         if self.path == "/api/save_analysis":
             content_length = int(self.headers.get('Content-Length', 0))
-            data = json.loads(self.rfile.read(content_length)) if content_length else {}
+            raw_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(raw_data) if content_length else {}
+            except:
+                data = {}
             user_id = data.get('user_id')
             score = data.get('score', 0)
             markers_found = data.get('markers_found', 0)
             positives = data.get('positives', '')
             negatives = data.get('negatives', '')
+            
+            logger.info(f"SAVE_ANALYSIS: user_id={user_id}, score={score}, markers={markers_found}")
+            
             if user_id:
                 db_execute(
                     "INSERT INTO analysis_history (user_id, score, markers_found, positives, negatives) VALUES (?, ?, ?, ?, ?)",
                     (user_id, score, markers_found, positives, negatives)
                 )
+                logger.info(f"Analysis saved for user {user_id}")
+            else:
+                logger.warning("Save analysis called without user_id")
+            
             self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(b'{"status":"ok"}')
             return
 
+        # Реферальный бонус (оставлен для совместимости)
         if self.path == "/api/first_analysis":
             content_length = int(self.headers.get('Content-Length', 0))
             data = json.loads(self.rfile.read(content_length)) if content_length else {}
@@ -133,12 +159,15 @@ class Handler(BaseHTTPRequestHandler):
             if user_id:
                 ref = db_fetchone("SELECT * FROM referrals WHERE referred_id = ? AND bonus_given = 0", (user_id,))
                 if ref:
+                    # логика бонуса (можно оставить пустой)
                     pass
             self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(b'{"status":"ok"}')
             return
 
+        # Неизвестный путь
         self.send_response(404)
         self.end_headers()
 
