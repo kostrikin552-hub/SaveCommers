@@ -1,3 +1,7 @@
+// ================================================================
+// ЧАСТЬ 1: ИНИЦИАЛИЗАЦИЯ, ШАБЛОНЫ, ПРОВЕРКА ПОДПИСИ, ОБРАБОТЧИКИ
+// ================================================================
+
 const urlParams = new URLSearchParams(window.location.search);
 const userId = urlParams.get('user_id');
 const timestamp = urlParams.get('ts');
@@ -108,6 +112,10 @@ verifySignature().then(ok => {
     analyzeBtn.disabled = false;
     analyzeBtn.textContent = '🔍 Анализировать';
 });
+
+// ================================================================
+// ЧАСТЬ 2: ОСНОВНОЙ ОБРАБОТЧИК АНАЛИЗА, ОТРИСОВКА РЕЗУЛЬТАТОВ, КОПИРОВАНИЕ
+// ================================================================
 
 // Основная кнопка анализа
 analyzeBtn.addEventListener('click', function() {
@@ -272,6 +280,21 @@ analyzeBtn.addEventListener('click', function() {
         }
     });
 
+    // Сохранение анализа в историю
+    if (userId) {
+        fetch('/api/save_analysis', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                user_id: parseInt(userId),
+                score: score,
+                markers_found: pos.length,
+                positives: pos.join('; '),
+                negatives: neg.join('; ')
+            })
+        }).catch(err => console.error('Save analysis error:', err));
+    }
+
     // Отправка сигнала о первом анализе (для реферального бонуса)
     if (!firstAnalysisDone && userId) {
         firstAnalysisDone = true;
@@ -300,4 +323,4 @@ function fallbackCopy(text) {
     document.execCommand('copy');
     document.body.removeChild(textarea);
     alert('✅ Скопировано!');
-}
+    }
