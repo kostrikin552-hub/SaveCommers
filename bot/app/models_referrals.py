@@ -16,7 +16,7 @@ def get_referral_stats(user_id):
 
 def get_balance(user_id):
     row = db_fetchone("SELECT balance FROM referral_balances WHERE user_id = ?", (user_id,))
-    return row[0] if row else 0  # в копейках
+    return row[0] if row else 0
 
 def add_balance(user_id, amount_kopecks):
     db_execute(
