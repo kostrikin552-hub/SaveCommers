@@ -1,3 +1,7 @@
+# ================================================================
+# ЧАСТЬ 1: ИМПОРТЫ, ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ, ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ================================================================
+
 import re
 import time
 import json
@@ -6,11 +10,11 @@ import html
 import requests
 import logging
 import traceback
-from datetime import datetime, timedelta, timezone
-from .config_db import (
+from datetime import datetime, timezone
+from .db import (
     db_fetchone, db_fetchall, db_execute,
     get_sub, create_sub, upsert_user, create_company,
-    generate_signed_url, main_menu, tariffs_kb
+    generate_signed_url, main_menu, tariffs_kb, days_left
 )
 from .models_referrals import (
     get_referral_code, get_referral_stats, get_balance,
@@ -159,6 +163,11 @@ def show_balance_info(user_id, chat_id, bot_token, bot_username):
     if balance_kop >= 50000:
         kb = {"inline_keyboard": [[{"text": "💳 Вывести", "callback_data": "referral_withdraw"}]]}
     send_msg(chat_id, ans, bot_token=bot_token, kb=kb)
+
+# ================================================================
+# ЧАСТЬ 2: ОСНОВНОЙ ОБРАБОТЧИК process_update И get_updates
+# ================================================================
+
 def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username):
     try:
         if "message" in update:
@@ -191,9 +200,8 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     sub = get_sub(user_id)
                 trial_msg = ""
                 if sub and sub["plan_type"] == "trial":
-                    end_dt = datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-                    days_left = (end_dt - datetime.now(timezone.utc)).days
-                    trial_msg = f"🎁 Осталось {days_left} дн. пробного периода\n" if days_left > 0 else "⛔ Пробный период истёк\n"
+                    days = days_left(sub)
+                    trial_msg = f"🎁 Осталось {days} дн. пробного периода\n" if days > 0 else "⛔ Пробный период истёк\n"
                 elif sub and sub['is_active'] == 1:
                     trial_msg = f"🔓 Подписка {sub['plan_type'].upper()} до {sub['end_date']}\n"
                 else:
@@ -203,7 +211,7 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
 
             elif text == "🚀 Новый анализ":
                 has_sub = 1 if is_sub_active(user_id) else 0
-                signed_url = generate_signed_url(user_id, has_sub, secret_key, webapp_url)
+                signed_url = generate_signed_url(user_id, has_sub, secret_key, webapp_url, base_url)
                 kb = {"inline_keyboard": [[{"text": "📂 Открыть анализатор", "web_app": {"url": signed_url}}]]}
                 send_msg(chat_id, "🔓 Открываю...", bot_token=bot_token, kb=kb)
 
@@ -386,7 +394,21 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
         logger.error(error_text)
         send_error_to_admin(admin_id, error_text, bot_token)
 
-# Заглушка для get_updates (больше не используется, т.к. перешли на вебхук)
 def get_updates(offset, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username):
-    logger.warning("get_updates вызван, но бот работает через вебхук")
+    try:
+        url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
+        r = requests.get(url, params={"offset": offset, "timeout": 30}, timeout=35)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("ok"):
+                for u in data["result"]:
+                    offset = u["update_id"] + 1
+                    process_update(u, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username)
+        else:
+            logger.error(f"Ошибка getUpdates: статус {r.status_code}")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Сетевая ошибка в getUpdates: {e}")
+    except Exception as e:
+        logger.error(f"Неизвестная ошибка в getUpdates: {e}")
+        send_error_to_admin(admin_id, f"Ошибка в getUpdates: {e}", bot_token)
     return offset
