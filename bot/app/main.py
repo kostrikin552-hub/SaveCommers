@@ -7,7 +7,7 @@ import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
 from .config_db import init_db, db_fetchone, db_execute, get_sub, create_sub
-from .handlers import get_updates
+from .handlers import process_update
 from .utils import check_pending_payments, notif_loop
 from .models_referrals import award_referral_bonus
 
@@ -19,7 +19,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN not set")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "5629144056"))
-BASE_URL = os.getenv("BASE_URL", "https://your-bot.onrender.com")
+BASE_URL = os.getenv("BASE_URL", "https://saleflow-bot.onrender.com")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://example.com")
@@ -27,30 +27,26 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-me")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SaveCommers_bot")
 PORT = int(os.getenv("PORT", 10000))
 
-offset = 0
 init_db()
 
-# --- Принудительное удаление вебхука с проверкой ---
-def delete_webhook():
-    url = f"https://api.telegram.org/bot{TOKEN}/deleteWebhook"
-    for attempt in range(5):
-        try:
-            resp = requests.get(url)
-            logger.info(f"Delete webhook attempt {attempt+1}: {resp.status_code} - {resp.text}")
-            if resp.status_code == 200 and resp.json().get("ok"):
-                return True
-        except Exception as e:
-            logger.error(f"Failed to delete webhook: {e}")
-        time.sleep(1)
-    return False
+def set_webhook():
+    webhook_url = f"{BASE_URL}/webhook/telegram"
+    url = f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}"
+    try:
+        resp = requests.get(url, timeout=10)
+        logger.info(f"Set webhook response: {resp.status_code} - {resp.text}")
+        return resp.json().get("ok", False)
+    except Exception as e:
+        logger.error(f"Failed to set webhook: {e}")
+        return False
 
-if delete_webhook():
-    logger.info("Webhook deleted successfully")
-else:
-    logger.warning("Could not delete webhook, continuing anyway")
-
-# Дополнительная пауза, чтобы Telegram точно обработал удаление
-time.sleep(3)
+# Удаляем старый вебхук (на всякий случай) и устанавливаем новый
+try:
+    requests.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook", timeout=5)
+    time.sleep(1)
+except:
+    pass
+set_webhook()
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -67,19 +63,30 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
-        if self.path == "/api/first_analysis":
+        # Вебхук от Telegram
+        if self.path == "/webhook/telegram":
             content_length = int(self.headers.get('Content-Length', 0))
             data = json.loads(self.rfile.read(content_length)) if content_length else {}
-            user_id = data.get('user_id')
-            if user_id:
-                ref = db_fetchone("SELECT * FROM referrals WHERE referred_id = ? AND bonus_given = 0", (user_id,))
-                if ref:
-                    pass
+            try:
+                process_update(
+                    data,
+                    TOKEN,
+                    ADMIN_ID,
+                    BASE_URL,
+                    WEBAPP_URL,
+                    SECRET_KEY,
+                    YOOKASSA_SHOP_ID,
+                    YOOKASSA_SECRET_KEY,
+                    BOT_USERNAME
+                )
+            except Exception as e:
+                logger.error(f"Error processing webhook update: {e}")
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(b'{"status":"ok"}')
+            self.wfile.write(b"OK")
             return
 
+        # Вебхук от Юкассы
         if self.path == "/webhook/yookassa":
             data = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))))
             if data.get("event") == "payment.succeeded":
@@ -103,6 +110,20 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(b"OK")
             return
 
+        # Дополнительный API-эндпоинт
+        if self.path == "/api/first_analysis":
+            content_length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(content_length)) if content_length else {}
+            user_id = data.get('user_id')
+            if user_id:
+                ref = db_fetchone("SELECT * FROM referrals WHERE referred_id = ? AND bonus_given = 0", (user_id,))
+                if ref:
+                    pass
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+            return
+
         self.send_response(404)
         self.end_headers()
 
@@ -116,14 +137,5 @@ if __name__ == "__main__":
     threading.Thread(target=check_pending_payments, args=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY), daemon=True).start()
     threading.Thread(target=notif_loop, args=(TOKEN, ADMIN_ID), daemon=True).start()
     threading.Thread(target=run_http, daemon=True).start()
-    # Небольшая пауза перед первым запросом getUpdates
-    time.sleep(2)
     while True:
-        try:
-            offset = get_updates(
-                offset, TOKEN, ADMIN_ID, BASE_URL, WEBAPP_URL, SECRET_KEY,
-                YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, BOT_USERNAME
-            )
-        except Exception as e:
-            logger.error(f"Основной цикл: {e}")
-            time.sleep(5)
+        time.sleep(60)
