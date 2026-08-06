@@ -1,7 +1,3 @@
-# ================================================================
-# ЧАСТЬ 1: ИМПОРТЫ, ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ, ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-# ================================================================
-
 import re
 import time
 import json
@@ -122,14 +118,14 @@ def handle_withdraw_states(user_id, chat_id, text, bot_token):
         data = withdraw_data[user_id]
         amount_rub = data['amount'] / 100
         confirm_text = (
-            f"✅ <b>Проверьте данные</b>\n"
-            f"💵 Сумма: {amount_rub:.2f} ₽\n"
-            f"📱 Способ: {safe_html(data['method'])}\n"
-            f"🔢 Реквизиты: {safe_html(data['details'])}\n"
-            f"🏦 Банк: {safe_html(data['bank'])}\n"
-            f"👤 ФИО: {safe_html(data['full_name'])}\n\n"
-            f"Подтвердить вывод?"
-        )
+            "✅ <b>Проверьте данные</b>\n"
+            "💵 Сумма: {:.2f} ₽\n"
+            "📱 Способ: {}\n"
+            "🔢 Реквизиты: {}\n"
+            "🏦 Банк: {}\n"
+            "👤 ФИО: {}\n\n"
+            "Подтвердить вывод?"
+        ).format(amount_rub, safe_html(data['method']), safe_html(data['details']), safe_html(data['bank']), safe_html(data['full_name']))
         kb = {
             "inline_keyboard": [
                 [{"text": "✅ Подтвердить", "callback_data": "withdraw_confirm"}],
@@ -150,23 +146,19 @@ def show_balance_info(user_id, chat_id, bot_token, bot_username):
     balance_kop = get_balance(user_id)
     balance_rub = balance_kop / 100
     ans = (
-        f"🔗 <b>Ваша реферальная ссылка:</b>\n"
-        f"<code>{safe_html(ref_link)}</code>\n\n"
-        f"👥 Приведено друзей: {count}\n"
-        f"💰 Баланс: {balance_rub:.2f} ₽\n\n"
-        f"За каждого приглашённого, кто оформит подписку, вы получите:\n"
-        f"• 5 дней Pro-подписки\n"
-        f"• 20% от суммы его оплаты на баланс\n\n"
-        f"Минимальная сумма вывода: 500 ₽"
-    )
+        "🔗 <b>Ваша реферальная ссылка:</b>\n"
+        "<code>{}</code>\n\n"
+        "👥 Приведено друзей: {}\n"
+        "💰 Баланс: {:.2f} ₽\n\n"
+        "За каждого приглашённого, кто оформит подписку, вы получите:\n"
+        "• 5 дней Pro-подписки\n"
+        "• 20% от суммы его оплаты на баланс\n\n"
+        "Минимальная сумма вывода: 500 ₽"
+    ).format(safe_html(ref_link), count, balance_rub)
     kb = None
     if balance_kop >= 50000:
         kb = {"inline_keyboard": [[{"text": "💳 Вывести", "callback_data": "referral_withdraw"}]]}
     send_msg(chat_id, ans, bot_token=bot_token, kb=kb)
-
-# ================================================================
-# ЧАСТЬ 2: ОСНОВНОЙ ОБРАБОТЧИК process_update И get_updates
-# ================================================================
 
 def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key, yookassa_shop_id, yookassa_secret_key, bot_username):
     try:
