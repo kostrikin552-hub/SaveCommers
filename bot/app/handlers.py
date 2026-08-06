@@ -74,7 +74,9 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     sub = get_sub(user_id)
                 trial_msg = ""
                 if sub and sub["plan_type"] == "trial":
-                    days_left = (datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S") - datetime.now(timezone.utc)).days
+                    # === ИСПРАВЛЕННЫЙ БЛОК ===
+                    end_dt = datetime.strptime(sub["end_date"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                    days_left = (end_dt - datetime.now(timezone.utc)).days
                     trial_msg = f"🎁 Осталось {days_left} дн. пробного периода\n" if days_left > 0 else "⛔ Пробный период истёк\n"
                 elif sub:
                     trial_msg = f"🔓 Подписка {sub['plan_type'].upper()} до {sub['end_date']}\n"
