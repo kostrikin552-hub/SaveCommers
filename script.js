@@ -72,25 +72,15 @@ const hasSub = hasSubParam === '1';
 let verified = false;
 let firstAnalysisDone = false;
 
-// Элементы DOM
-const templateSelect = document.getElementById('template-select');
-const dialogInput = document.getElementById('dialog-input');
-const analyzeBtn = document.getElementById('analyze-btn');
-const exampleBtn = document.getElementById('example-btn');
-const stepUpload = document.getElementById('step-upload');
-const stepResult = document.getElementById('step-result');
-
-// Обработчик выбора шаблона
-templateSelect.addEventListener('change', function() {
+document.getElementById('template-select').addEventListener('change', function() {
     const val = this.value;
     if (val && templates[val]) {
-        dialogInput.value = templates[val];
+        document.getElementById('dialog-input').value = templates[val];
     }
 });
 
-// Кнопка "Вставить пример"
-exampleBtn.addEventListener('click', function() {
-    dialogInput.value = `Клиент: Здравствуйте, нужно создать сайт, сколько будет стоить?
+document.getElementById('example-btn').addEventListener('click', function() {
+    document.getElementById('dialog-input').value = `Клиент: Здравствуйте, нужно создать сайт, сколько будет стоить?
 Вы: Здравствуйте, давайте уточним задачу. Для какого бизнеса сайт?
 Клиент: Для интернет-магазина одежды.
 Вы: Отлично. А какой бюджет вы рассматриваете?
@@ -101,29 +91,28 @@ exampleBtn.addEventListener('click', function() {
 Клиент: Да, отлично.`;
 });
 
-// Проверка подписи при загрузке
 verifySignature().then(ok => {
     if (!ok) {
-        analyzeBtn.disabled = true;
-        analyzeBtn.textContent = '⛔ Доступ запрещён';
+        document.getElementById('analyze-btn').disabled = true;
+        document.getElementById('analyze-btn').textContent = '⛔ Доступ запрещён';
         return;
     }
     verified = true;
-    analyzeBtn.disabled = false;
-    analyzeBtn.textContent = '🔍 Анализировать';
+    document.getElementById('analyze-btn').disabled = false;
+    document.getElementById('analyze-btn').textContent = '🔍 Анализировать';
 });
 
 // ================================================================
-// ЧАСТЬ 2: ОСНОВНОЙ ОБРАБОТЧИК АНАЛИЗА, ОТРИСОВКА РЕЗУЛЬТАТОВ, КОПИРОВАНИЕ
+// ЧАСТЬ 2: ОСНОВНОЙ ОБРАБОТЧИК АНАЛИЗА, ОТРИСОВКА РЕЗУЛЬТАТОВ, СОХРАНЕНИЕ
 // ================================================================
 
-// Основная кнопка анализа
-analyzeBtn.addEventListener('click', function() {
+document.getElementById('analyze-btn').addEventListener('click', function() {
     if (!verified) {
         alert('Проверка подписи не пройдена');
         return;
     }
-    const text = dialogInput.value.trim();
+    const input = document.getElementById('dialog-input');
+    const text = input.value.trim();
     if (!text) return alert('Вставьте текст переписки');
 
     function parseDialog(t) {
@@ -234,12 +223,13 @@ analyzeBtn.addEventListener('click', function() {
     }
     const drafts = genDraft(lastClient, err);
 
-    stepUpload.style.display = 'none';
-    stepResult.style.display = 'block';
+    document.getElementById('step-upload').style.display='none';
+    const container = document.getElementById('step-result');
+    container.style.display='block';
     const scoreColor = score>=70 ? 'good' : (score>=40 ? 'medium' : 'bad');
     let posHtml = pos.slice(0,10).map(p => `<div class="feedback-item positive">${p}</div>`).join('');
     let negHtml = neg.slice(0,10).map(n => `<div class="feedback-item negative">${n}</div>`).join('');
-    stepResult.innerHTML = `
+    container.innerHTML = `
         <div class="score ${scoreColor}">${score}/100</div>
         <div style="text-align:center;color:#4a7b6e;margin-bottom:12px;">Индекс качества диалога</div>
         <div class="error-box"><strong>🔥 Главная ошибка</strong><p><strong>${err.name}</strong></p><p>${err.desc}</p></div>
@@ -257,8 +247,7 @@ analyzeBtn.addEventListener('click', function() {
         <button onclick="location.reload()" style="background:#e8f2ef;color:#0f2e2a;">🔄 Новый анализ</button>
     `;
 
-    // Обработчики кнопок копирования ответов
-    stepResult.querySelectorAll('.draft-buttons button').forEach(b => {
+    container.querySelectorAll('.draft-buttons button').forEach(b => {
         b.addEventListener('click', function() {
             if (this.classList.contains('expert-locked')) {
                 alert('🔒 Экспертный ответ доступен только по подписке. Оформите её в боте.');
@@ -269,7 +258,6 @@ analyzeBtn.addEventListener('click', function() {
         });
     });
 
-    // Кнопка "Поделиться"
     document.getElementById('share-result').addEventListener('click', function() {
         const shareText = `Мой диалог набрал ${score}/100 по версии SaleFlow. Главная ошибка: ${err.name}. Попробуйте и вы! https://t.me/SaleFlowBot`;
         if (navigator.share) {
@@ -280,7 +268,7 @@ analyzeBtn.addEventListener('click', function() {
         }
     });
 
-    // Сохранение анализа в историю
+    // --- СОХРАНЕНИЕ АНАЛИЗА В ИСТОРИЮ ---
     if (userId) {
         fetch('/api/save_analysis', {
             method: 'POST',
@@ -295,7 +283,7 @@ analyzeBtn.addEventListener('click', function() {
         }).catch(err => console.error('Save analysis error:', err));
     }
 
-    // Отправка сигнала о первом анализе (для реферального бонуса)
+    // --- ПЕРВЫЙ АНАЛИЗ (РЕФЕРАЛЬНЫЙ БОНУС) ---
     if (!firstAnalysisDone && userId) {
         firstAnalysisDone = true;
         fetch('/api/first_analysis', {
@@ -306,7 +294,6 @@ analyzeBtn.addEventListener('click', function() {
     }
 });
 
-// Вспомогательная функция копирования
 function copyText(text) {
     if (navigator.clipboard) {
         navigator.clipboard.writeText(text).then(()=>alert('✅ Скопировано!')).catch(()=>fallbackCopy(text));
@@ -323,4 +310,4 @@ function fallbackCopy(text) {
     document.execCommand('copy');
     document.body.removeChild(textarea);
     alert('✅ Скопировано!');
-    }
+        }
