@@ -40,7 +40,6 @@ def set_webhook():
         logger.error(f"Failed to set webhook: {e}")
         return False
 
-# Удаляем старый вебхук (на всякий случай) и устанавливаем новый
 try:
     requests.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook", timeout=5)
     time.sleep(1)
@@ -63,7 +62,6 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
-        # Вебхук от Telegram
         if self.path == "/webhook/telegram":
             content_length = int(self.headers.get('Content-Length', 0))
             data = json.loads(self.rfile.read(content_length)) if content_length else {}
@@ -86,7 +84,6 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"OK")
             return
 
-        # Вебхук от Юкассы
         if self.path == "/webhook/yookassa":
             data = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))))
             if data.get("event") == "payment.succeeded":
@@ -110,7 +107,25 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(b"OK")
             return
 
-        # Дополнительный API-эндпоинт
+        # --- НОВЫЙ ЭНДПОИНТ ДЛЯ СОХРАНЕНИЯ АНАЛИЗА ---
+        if self.path == "/api/save_analysis":
+            content_length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(content_length)) if content_length else {}
+            user_id = data.get('user_id')
+            score = data.get('score', 0)
+            markers_found = data.get('markers_found', 0)
+            positives = data.get('positives', '')
+            negatives = data.get('negatives', '')
+            if user_id:
+                db_execute(
+                    "INSERT INTO analysis_history (user_id, score, markers_found, positives, negatives) VALUES (?, ?, ?, ?, ?)",
+                    (user_id, score, markers_found, positives, negatives)
+                )
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+            return
+
         if self.path == "/api/first_analysis":
             content_length = int(self.headers.get('Content-Length', 0))
             data = json.loads(self.rfile.read(content_length)) if content_length else {}
