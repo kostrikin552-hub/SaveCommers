@@ -28,25 +28,27 @@ def get_user_achievements(user_id):
     return [{'id': row['achievement_id'], 'unlocked_at': row['unlocked_at']} for row in rows]
 
 def check_and_award_achievements(user_id, total_analyses, score, referrals_count):
-    if total_analyses >= 1:
-        unlock_achievement(user_id, 'first_analysis')
-    if total_analyses >= 5:
-        unlock_achievement(user_id, 'five_analyses')
-    if total_analyses >= 10:
-        unlock_achievement(user_id, 'ten_analyses')
-    if total_analyses >= 25:
-        unlock_achievement(user_id, 'twenty_five_analyses')
-    if total_analyses >= 50:
-        unlock_achievement(user_id, 'fifty_analyses')
-    if total_analyses >= 100:
-        unlock_achievement(user_id, 'hundred_analyses')
-    if score >= 95:
-        unlock_achievement(user_id, 'master_dialog')
-    elif score >= 90:
-        unlock_achievement(user_id, 'perfect_dialog')
-    if referrals_count >= 1:
-        unlock_achievement(user_id, 'first_referral')
-    if referrals_count >= 5:
-        unlock_achievement(user_id, 'five_referrals')
-    if referrals_count >= 10:
-        unlock_achievement(user_id, 'ten_referrals')
+    new_achievements = []
+    if total_analyses >= 1 and unlock_achievement(user_id, 'first_analysis'):
+        new_achievements.append('first_analysis')
+    if total_analyses >= 5 and unlock_achievement(user_id, 'five_analyses'):
+        new_achievements.append('five_analyses')
+    if total_analyses >= 10 and unlock_achievement(user_id, 'ten_analyses'):
+        new_achievements.append('ten_analyses')
+    if total_analyses >= 25 and unlock_achievement(user_id, 'twenty_five_analyses'):
+        new_achievements.append('twenty_five_analyses')
+    if total_analyses >= 50 and unlock_achievement(user_id, 'fifty_analyses'):
+        new_achievements.append('fifty_analyses')
+    if total_analyses >= 100 and unlock_achievement(user_id, 'hundred_analyses'):
+        new_achievements.append('hundred_analyses')
+    if score >= 95 and unlock_achievement(user_id, 'master_dialog'):
+        new_achievements.append('master_dialog')
+    elif score >= 90 and unlock_achievement(user_id, 'perfect_dialog'):
+        new_achievements.append('perfect_dialog')
+    if referrals_count >= 1 and unlock_achievement(user_id, 'first_referral'):
+        new_achievements.append('first_referral')
+    if referrals_count >= 5 and unlock_achievement(user_id, 'five_referrals'):
+        new_achievements.append('five_referrals')
+    if referrals_count >= 10 and unlock_achievement(user_id, 'ten_referrals'):
+        new_achievements.append('ten_referrals')
+    return new_achievements
