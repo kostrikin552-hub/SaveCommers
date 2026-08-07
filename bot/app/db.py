@@ -97,6 +97,14 @@ def init_db():
             status TEXT DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
+        # Новая таблица достижений
+        c.execute('''CREATE TABLE IF NOT EXISTS user_achievements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            achievement_id TEXT,
+            unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, achievement_id)
+        )''')
         conn.commit()
         conn.close()
 
