@@ -28,7 +28,6 @@ def get_user_achievements(user_id):
     return [{'id': row['achievement_id'], 'unlocked_at': row['unlocked_at']} for row in rows]
 
 def check_and_award_achievements(user_id, total_analyses, score, referrals_count):
-    # Анализы
     if total_analyses >= 1:
         unlock_achievement(user_id, 'first_analysis')
     if total_analyses >= 5:
@@ -41,14 +40,10 @@ def check_and_award_achievements(user_id, total_analyses, score, referrals_count
         unlock_achievement(user_id, 'fifty_analyses')
     if total_analyses >= 100:
         unlock_achievement(user_id, 'hundred_analyses')
-    
-    # Баллы
     if score >= 95:
         unlock_achievement(user_id, 'master_dialog')
     elif score >= 90:
         unlock_achievement(user_id, 'perfect_dialog')
-    
-    # Рефералы
     if referrals_count >= 1:
         unlock_achievement(user_id, 'first_referral')
     if referrals_count >= 5:
