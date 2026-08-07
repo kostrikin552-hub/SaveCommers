@@ -184,37 +184,42 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     if owner:
                         db_execute('INSERT OR IGNORE INTO referrals (referrer_id, referred_id) VALUES (?, ?)', (owner[0], user_id))
                 sub = get_sub(user_id)
+                trial_used = db_fetchone("SELECT 1 FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
                 if not sub:
-                    create_sub(user_id, 'trial', 3)
-                    sub = get_sub(user_id)
-                trial_msg = ''
-                if sub and sub['plan_type'] == 'trial':
-                    days = days_left(sub)
-                    if days > 0:
-                        trial_msg = '🎁 Осталось ' + str(days) + ' дн. пробного периода\n'
+                    if trial_used:
+                        trial_msg = '⛔ Вы уже активировали пробный период ранее. Оформите подписку в разделе "Тарифы".\n'
                     else:
-                        trial_msg = '⛔ Пробный период истёк\n'
-                elif sub and sub['is_active'] == 1:
-                    plan_name = sub['plan_type'].upper()
-                    if plan_name == 'TRIAL':
-                        plan_name = 'Пробный'
-                    elif plan_name == 'PRO':
-                        plan_name = 'Pro'
-                    elif plan_name == 'PREMIUM':
-                        plan_name = 'Премиум'
-                    elif plan_name == 'B2B':
-                        plan_name = 'B2B'
-                    else:
-                        plan_name = plan_name.capitalize()
-                    trial_msg = '🔓 Подписка ' + plan_name + ' до ' + sub['end_date'] + '\n'
+                        create_sub(user_id, 'trial', 3)
+                        sub = get_sub(user_id)
+                        trial_msg = '🎁 Активирован пробный период на 3 дня!\n'
                 else:
-                    trial_msg = '⛔ Нет активной подписки\n'
+                    if sub and sub['plan_type'] == 'trial':
+                        days = days_left(sub)
+                        if days > 0:
+                            trial_msg = '🎁 Осталось ' + str(days) + ' дн. пробного периода\n'
+                        else:
+                            trial_msg = '⛔ Пробный период истёк\n'
+                    elif sub and sub['is_active'] == 1:
+                        plan_name = sub['plan_type'].upper()
+                        if plan_name == 'TRIAL':
+                            plan_name = 'Пробный'
+                        elif plan_name == 'PRO':
+                            plan_name = 'Pro'
+                        elif plan_name == 'PREMIUM':
+                            plan_name = 'Премиум'
+                        elif plan_name == 'B2B':
+                            plan_name = 'B2B'
+                        else:
+                            plan_name = plan_name.capitalize()
+                        trial_msg = '🔓 Подписка ' + plan_name + ' до ' + sub['end_date'] + '\n'
+                    else:
+                        trial_msg = '⛔ Нет активной подписки\n'
                 msg_text = '👋 Добро пожаловать в SaleFlow!\n\n'
                 msg_text += 'Я покажу, почему клиент не купил.\n'
                 msg_text += 'За 1 секунду.\n\n'
                 msg_text += 'Проверь свою последнюю переписку.'
                 kb = {'inline_keyboard': [[{'text': '🚀 Проверить первую переписку бесплатно', 'callback_data': 'start_analysis'}]]}
-                send_msg(chat_id, msg_text, bot_token=bot_token, kb=kb)
+                send_msg(chat_id, trial_msg + '\n' + msg_text, bot_token=bot_token, kb=kb)
                 return
 
             elif text == '🚀 Новый анализ':
@@ -231,7 +236,6 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 history = db_fetchall('SELECT * FROM analysis_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 5', (user_id,))
                 all_history = db_fetchall('SELECT score FROM analysis_history WHERE user_id = ? ORDER BY created_at ASC', (user_id,))
                 
-                # --- Информация о подписке ---
                 if sub and sub['is_active'] == 1:
                     plan_name = sub['plan_type'].upper()
                     if plan_name == 'TRIAL':
@@ -249,7 +253,6 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 else:
                     ans = '📈 Нет активной подписки\n'
                 
-                # --- Статистика анализов ---
                 total_analyses = len(all_history)
                 if total_analyses > 0:
                     scores = [row['score'] for row in all_history]
@@ -262,7 +265,6 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     ans += f'• Средний балл: {avg_score:.1f}/100\n'
                     ans += f'• Средний за последние 5: {avg_last_5:.1f}/100\n'
                     
-                    # Сравнение первого и последнего
                     if total_analyses >= 2:
                         first_score = scores[0]
                         last_score = scores[-1]
@@ -278,7 +280,6 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 else:
                     ans += '\n📊 Нет анализов. Начните с первого!\n'
                 
-                # --- Последние 5 анализов ---
                 if history:
                     ans += '\n📋 Последние 5 анализов:\n'
                     for h in history:
@@ -287,7 +288,6 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 else:
                     ans += '\nНет анализов'
                 
-                # --- Достижения ---
                 user_achs = get_user_achievements(user_id)
                 if user_achs:
                     ans += '\n🏆 Достижения:\n'
@@ -371,15 +371,14 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                 return
             elif data == 'trial':
                 active = get_sub(user_id)
+                trial_used = db_fetchone("SELECT 1 FROM subscriptions WHERE user_id = ? AND plan_type = 'trial'", (user_id,))
                 if active and active['is_active'] == 1:
                     send_msg(chat_id, '❌ У вас уже есть активная подписка', bot_token=bot_token)
+                elif trial_used:
+                    send_msg(chat_id, '❌ Вы уже активировали пробный период ранее', bot_token=bot_token)
                 else:
-                    trial_used = db_fetchone('SELECT 1 FROM subscriptions WHERE user_id = ? AND plan_type = \'trial\'', (user_id,))
-                    if trial_used:
-                        send_msg(chat_id, '❌ Вы уже активировали пробный период ранее', bot_token=bot_token)
-                    else:
-                        create_sub(user_id, 'trial', 3)
-                        send_msg(chat_id, '✅ 3 дня бесплатно активированы!', bot_token=bot_token)
+                    create_sub(user_id, 'trial', 3)
+                    send_msg(chat_id, '✅ 3 дня бесплатно активированы!', bot_token=bot_token)
                 answer_cb(cb['id'], bot_token=bot_token)
                 return
             elif data == 'create_company':
