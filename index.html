@@ -2,30 +2,34 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SaleFlow — анализ</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="app">
-    <h1>🌊 SaleFlow</h1>
-    <div id="step-upload">
-        <div class="info-box">
-            <strong>📌 Как вставить переписку:</strong> Используй «Клиент:» и «Вы:» перед каждой репликой — это даст максимальную точность. Или просто чередуй строки: первая — клиент, вторая — вы.
+    <div id="app">
+        <h1>🌊 SaleFlow</h1>
+        <div id="step-upload">
+            <div class="info-box">
+                <strong>📌 Как вставить переписку:</strong> Используй «Клиент:» и «Вы:» перед каждой репликой — это даст максимальную точность. Или просто чередуй строки: первая — клиент, вторая — вы.
+            </div>
+            <select id="template-select" class="template-select">
+                <option value="">— Выберите шаблон диалога —</option>
+                <option value="ecommerce">Интернет-магазин</option>
+                <option value="services">Услуги (консалтинг)</option>
+                <option value="b2b">B2B-продажи</option>
+                <option value="cold">Холодный контакт</option>
+            </select>
+            <textarea id="dialog-input" rows="6" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?"></textarea>
+            <button id="analyze-btn">🔍 Анализировать</button>
+            <button id="example-btn" class="btn-secondary" style="margin-top:4px;">📋 Вставить пример</button>
         </div>
-        <select id="template-select" class="template-select">
-            <option value="">— Выберите шаблон диалога —</option>
-            <option value="ecommerce">Интернет-магазин</option>
-            <option value="services">Услуги (консалтинг)</option>
-            <option value="b2b">B2B-продажи</option>
-            <option value="cold">Холодный контакт</option>
-        </select>
-        <textarea id="dialog-input" rows="6" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?"></textarea>
-        <button id="analyze-btn">🔍 Анализировать</button>
-        <button id="example-btn" class="btn-secondary" style="margin-top:4px;">📋 Вставить пример</button>
+        <div id="step-result" style="display:none;"></div>
     </div>
-    <div id="step-result" style="display:none;"></div>
-</div>
-<script src="script.js"></script>
+    <script src="script.js"></script>
+    <script>
+        // (опционально) обновление бейджа, если он есть в новом HTML – здесь его нет
+    </script>
 </body>
 </html>
