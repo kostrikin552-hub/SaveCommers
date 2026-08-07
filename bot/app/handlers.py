@@ -16,6 +16,7 @@ from .models_referrals import (
     get_referral_code, get_referral_stats, get_balance,
     award_referral_bonus, create_withdraw_request
 )
+from .models_achievements import get_user_achievements, ACHIEVEMENTS
 from .utils import send_msg, answer_cb, send_error_to_admin, notify_admin_withdraw
 
 logger = logging.getLogger(__name__)
@@ -208,7 +209,6 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     trial_msg = '🔓 Подписка ' + plan_name + ' до ' + sub['end_date'] + '\n'
                 else:
                     trial_msg = '⛔ Нет активной подписки\n'
-                # --- НОВЫЙ ОНБОРДИНГ ---
                 msg_text = '👋 Добро пожаловать в SaleFlow!\n\n'
                 msg_text += 'Я покажу, почему клиент не купил.\n'
                 msg_text += 'За 1 секунду.\n\n'
@@ -229,6 +229,9 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
             elif text == '📊 Мой прогресс':
                 sub = get_sub(user_id)
                 history = db_fetchall('SELECT * FROM analysis_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 5', (user_id,))
+                all_history = db_fetchall('SELECT score FROM analysis_history WHERE user_id = ? ORDER BY created_at ASC', (user_id,))
+                
+                # --- Информация о подписке ---
                 if sub and sub['is_active'] == 1:
                     plan_name = sub['plan_type'].upper()
                     if plan_name == 'TRIAL':
@@ -245,13 +248,56 @@ def process_update(update, bot_token, admin_id, base_url, webapp_url, secret_key
                     ans += 'Действует до: ' + sub['end_date'] + '\n'
                 else:
                     ans = '📈 Нет активной подписки\n'
+                
+                # --- Статистика анализов ---
+                total_analyses = len(all_history)
+                if total_analyses > 0:
+                    scores = [row['score'] for row in all_history]
+                    avg_score = sum(scores) / total_analyses
+                    last_5 = scores[-5:] if len(scores) >= 5 else scores
+                    avg_last_5 = sum(last_5) / len(last_5) if last_5 else 0
+                    
+                    ans += '\n📊 Статистика:\n'
+                    ans += f'• Всего анализов: {total_analyses}\n'
+                    ans += f'• Средний балл: {avg_score:.1f}/100\n'
+                    ans += f'• Средний за последние 5: {avg_last_5:.1f}/100\n'
+                    
+                    # Сравнение первого и последнего
+                    if total_analyses >= 2:
+                        first_score = scores[0]
+                        last_score = scores[-1]
+                        diff = last_score - first_score
+                        if diff > 0:
+                            ans += f'• 📈 Прогресс: +{diff:.0f} баллов (было {first_score:.0f} → стало {last_score:.0f})\n'
+                        elif diff < 0:
+                            ans += f'• 📉 Прогресс: {diff:.0f} баллов (было {first_score:.0f} → стало {last_score:.0f})\n'
+                        else:
+                            ans += f'• ➖ Прогресс: без изменений ({first_score:.0f} → {last_score:.0f})\n'
+                    else:
+                        ans += '• Проведите ещё один анализ, чтобы увидеть прогресс\n'
+                else:
+                    ans += '\n📊 Нет анализов. Начните с первого!\n'
+                
+                # --- Последние 5 анализов ---
                 if history:
-                    ans += '📊 Последние анализы:\n'
+                    ans += '\n📋 Последние 5 анализов:\n'
                     for h in history:
                         date_str = h['created_at'][:10]
-                        ans += '• ' + date_str + ': ' + str(h['score']) + '/100, найдено ' + str(h['markers_found']) + ' критериев\n'
+                        ans += f'• {date_str}: {h["score"]}/100, найдено {h["markers_found"]} критериев\n'
                 else:
-                    ans += 'Нет анализов'
+                    ans += '\nНет анализов'
+                
+                # --- Достижения ---
+                user_achs = get_user_achievements(user_id)
+                if user_achs:
+                    ans += '\n🏆 Достижения:\n'
+                    for a in user_achs:
+                        info = ACHIEVEMENTS.get(a['id'])
+                        if info:
+                            ans += f'{info["emoji"]} {info["name"]}\n'
+                else:
+                    ans += '\n🏆 Нет достижений. Продолжайте анализировать!'
+                
                 send_msg(chat_id, ans, bot_token=bot_token, kb=main_menu())
 
             elif text == '👥 B2B':
