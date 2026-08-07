@@ -22,7 +22,7 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "5629144056"))
 BASE_URL = os.getenv("BASE_URL", "https://saleflow-bot.onrender.com")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://example.com")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://kostrikin552-hub.github.io/SaveCommers/")
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-me")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "SaveCommers_bot")
 PORT = int(os.getenv("PORT", 10000))
@@ -130,6 +130,14 @@ class Handler(BaseHTTPRequestHandler):
                     "INSERT INTO analysis_history (user_id, score, markers_found, positives, negatives) VALUES (?, ?, ?, ?, ?)",
                     (user_id, score, markers_found, positives, negatives)
                 )
+                # Проверка достижений
+                try:
+                    from .models_achievements import check_and_award_achievements
+                    total = db_fetchone("SELECT COUNT(*) FROM analysis_history WHERE user_id = ?", (user_id,))[0]
+                    refs = db_fetchone("SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", (user_id,))[0]
+                    check_and_award_achievements(user_id, total, score, refs)
+                except Exception as e:
+                    logger.error(f"Achievement check error: {e}")
             self.send_response(200)
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
