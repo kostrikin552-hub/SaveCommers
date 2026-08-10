@@ -13,10 +13,13 @@ from ..repositories.analysis_repo import (
 from ..repositories.subscription_repo import get_active_subscription
 from ..config import FREE_ANALYSIS_LIMIT
 from ..analyzer import analyze_dialog_with_timeout
-from .achievement_service import check_and_award_achievements
+from ..services.achievement_service import check_and_award_achievements   # исправлено
 from ..services.referral_service import get_referral_stats
+from ..utils import send_msg   # если нужен send_msg
 
 logger = logging.getLogger(__name__)
+
+# ... остальной код без изменений ...
 
 def reserve_free_analysis(user_id: int, idempotency_key: Optional[str] = None) -> Tuple[bool, str]:
     with get_connection() as conn:
