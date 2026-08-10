@@ -13,7 +13,7 @@ from ..repositories.analysis_repo import (
 from ..repositories.subscription_repo import get_active_subscription
 from ..config import FREE_ANALYSIS_LIMIT
 from ..analyzer import analyze_dialog_with_timeout
-from .services.achievement_service import check_and_award_achievements
+from .achievement_service import check_and_award_achievements
 from ..services.referral_service import get_referral_stats
 
 logger = logging.getLogger(__name__)
