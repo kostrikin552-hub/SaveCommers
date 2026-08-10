@@ -22,7 +22,6 @@ from ..config import FREE_ANALYSIS_LIMIT
 from ..analyzer import analyze_dialog_with_timeout
 from ..services.achievement_service import check_and_award_achievements
 from ..services.referral_service import get_referral_stats
-from ..utils import send_msg
 
 logger = logging.getLogger(__name__)
 
