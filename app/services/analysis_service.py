@@ -2,24 +2,29 @@ import logging
 import json
 from typing import Optional, Tuple, Dict, Any
 from datetime import datetime, timezone
+
 from ..db import get_connection, transaction, execute_query
 from ..repositories.analysis_repo import (
-    get_analysis_request, delete_analysis_request,
-    get_analysis_count, save_analysis_history, get_user_usage,
-    increment_free_analyses, decrement_free_analyses, init_user_usage,
-    update_analysis_request_status, create_analysis_request,
+    get_analysis_request,
+    delete_analysis_request,
+    get_analysis_count,
+    save_analysis_history,
+    get_user_usage,
+    increment_free_analyses,
+    decrement_free_analyses,
+    init_user_usage,
+    update_analysis_request_status,
+    create_analysis_request,
     update_user_weaknesses
 )
 from ..repositories.subscription_repo import get_active_subscription
 from ..config import FREE_ANALYSIS_LIMIT
 from ..analyzer import analyze_dialog_with_timeout
-from ..services.achievement_service import check_and_award_achievements   # исправлено
+from ..services.achievement_service import check_and_award_achievements
 from ..services.referral_service import get_referral_stats
-from ..utils import send_msg   # если нужен send_msg
+from ..utils import send_msg
 
 logger = logging.getLogger(__name__)
-
-# ... остальной код без изменений ...
 
 def reserve_free_analysis(user_id: int, idempotency_key: Optional[str] = None) -> Tuple[bool, str]:
     with get_connection() as conn:
