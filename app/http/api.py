@@ -2,6 +2,7 @@ import json
 import logging
 from urllib.parse import parse_qs, urlparse
 from datetime import datetime, timezone
+
 from ..config import BOT_TOKEN, MAX_DIALOG_LENGTH
 from ..db import get_connection, transaction, execute_query
 from ..services.analysis_service import perform_analysis, get_cached_analysis, reserve_free_analysis, rollback_free_analysis
