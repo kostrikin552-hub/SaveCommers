@@ -2,34 +2,68 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SaleFlow — анализ</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="color-scheme" content="light dark">
+    <meta name="telegram-web-app-theme" content="adaptive">
+    <meta name="description" content="SaleFlow — экспертная диагностика диалогов продавцов и клиентов">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>SaleFlow — анализ переписки</title>
+    <link rel="preconnect" href="https://telegram.org">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'self';
+        script-src 'self' https://telegram.org;
+        connect-src 'self' https://api.telegram.org https://saleflow-bot.onrender.com;
+        style-src 'self' 'unsafe-inline';
+        img-src 'self' data:;
+    ">
     <link rel="stylesheet" href="style.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        window.API_BASE = 'https://saleflow-bot.onrender.com';
+        window.BOT_USERNAME = 'SaveCommers_bot';
+    </script>
 </head>
 <body>
-    <div id="app">
+    <main id="app">
         <h1>🌊 SaleFlow</h1>
-        <div id="step-upload">
+        <section id="step-upload">
             <div class="info-box">
-                <strong>📌 Как вставить переписку:</strong> Используй «Клиент:» и «Вы:» перед каждой репликой — это даст максимальную точность. Или просто чередуй строки: первая — клиент, вторая — вы.
+                <strong>📌 Как вставить переписку:</strong> Используй «Клиент:» и «Вы:» перед каждой репликой --- это даст максимальную точность. Или просто чередуй строки: первая --- клиент, вторая --- вы.
             </div>
-            <select id="template-select" class="template-select">
-                <option value="">— Выберите шаблон диалога —</option>
+            <select id="template-select" class="template-select" aria-label="Выбор шаблона диалога">
+                <option value="">-- Выберите шаблон диалога --</option>
                 <option value="ecommerce">Интернет-магазин</option>
                 <option value="services">Услуги (консалтинг)</option>
                 <option value="b2b">B2B-продажи</option>
                 <option value="cold">Холодный контакт</option>
             </select>
-            <textarea id="dialog-input" rows="6" placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?"></textarea>
-            <button id="analyze-btn">🔍 Анализировать</button>
-            <button id="example-btn" class="btn-secondary" style="margin-top:4px;">📋 Вставить пример</button>
+            <textarea id="dialog-input"
+                rows="6"
+                maxlength="50000"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+                enterkeyhint="send"
+                aria-label="Вставьте текст диалога"
+                placeholder="Клиент: Здравствуйте!&#10;Вы: Добрый день!&#10;Клиент: Сколько стоит?"></textarea>
+            <div class="textarea-helper">
+                <span id="char-counter">0 / 50 000</span>
+                <span id="line-counter">0 строк</span>
+            </div>
+            <button id="analyze-btn" class="btn-primary">🔍 Анализировать</button>
+            <button id="example-btn" class="btn-secondary">📋 Вставить пример</button>
+            <button id="clear-btn" class="btn-secondary">🗑 Очистить</button>
+        </section>
+        <section id="step-result" hidden></section>
+    </main>
+    <noscript>
+        <div style="padding:20px;text-align:center;color:red;">
+            ⚠️ Для работы приложения необходимо включить JavaScript.
         </div>
-        <div id="step-result" style="display:none;"></div>
-    </div>
-    <script src="script.js"></script>
-    <script>
-        // (опционально) обновление бейджа, если он есть в новом HTML – здесь его нет
-    </script>
+    </noscript>
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>
