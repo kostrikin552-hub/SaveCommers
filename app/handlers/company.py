@@ -16,7 +16,8 @@ def handle_company_message(update: Dict[str, Any]) -> None:
     bot_token = update.get("bot_token")
 
     company = db_fetchone(
-        "SELECT id, name, invite_code FROM companies WHERE owner_id = ?", (user_id,)
+        "SELECT id, name, invite_code FROM companies WHERE owner_id = %s",
+        (user_id,)
     )
     if company:
         text = (
@@ -43,7 +44,8 @@ def handle_company_callback(update: Dict[str, Any]) -> None:
 
     if data == "company_invite":
         company = db_fetchone(
-            "SELECT invite_code FROM companies WHERE owner_id = ?", (user_id,)
+            "SELECT invite_code FROM companies WHERE owner_id = %s",
+            (user_id,)
         )
         if company:
             send_msg(chat_id, f"Код приглашения: <code>{escape(company['invite_code'])}</code>", bot_token=bot_token)
