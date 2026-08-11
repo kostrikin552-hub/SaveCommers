@@ -35,17 +35,12 @@ def handle_api_analyze(handler, body):
         handler.send_json_response(400, {"status": "error", "message": "Missing init_data"})
         return
 
-    # === ВРЕМЕННОЕ ОТКЛЮЧЕНИЕ ПРОВЕРКИ initData (ДЛЯ ТЕСТА) ===
+    # === НОРМАЛЬНАЯ ПРОВЕРКА initData (без костылей) ===
     user_info = verify_init_data(init_data, BOT_TOKEN)
     if not user_info:
-        logger.warning("⚠️ initData не прошёл проверку, используем тестового пользователя (УДАЛИТЬ ПОТОМ!)")
-        user_info = {
-            "id": 5629144056,
-            "first_name": "Test",
-            "last_name": "User",
-            "username": "testuser"
-        }
-    # === КОНЕЦ ВРЕМЕННОГО БЛОКА ===
+        logger.warning(f"Invalid init_data: {init_data[:50]}...")
+        handler.send_json_response(403, {"status": "error", "message": "Invalid init_data"})
+        return
 
     user_id = user_info.get('id')
     if not user_id:
