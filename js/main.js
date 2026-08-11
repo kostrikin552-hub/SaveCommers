@@ -10,9 +10,37 @@ document.addEventListener('DOMContentLoaded', () => {
     let isAnalyzing = false;
     let abortController = null;
 
+    // === ПОЛУЧЕНИЕ initData ===
     let initData = '';
+
+    // 1. Попытка получить через Telegram WebApp API
     if (window.Telegram && window.Telegram.WebApp) {
         initData = window.Telegram.WebApp.initData || '';
+        // Если не получилось, пытаемся получить из URL (fallback)
+        if (!initData) {
+            const urlParams = new URLSearchParams(window.location.search);
+            const tgData = urlParams.get('tgWebAppData');
+            if (tgData) {
+                initData = decodeURIComponent(tgData);
+            }
+        }
+    }
+
+    // Если всё ещё нет – пытаемся из параметра init_data (кастомный)
+    if (!initData) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const customInit = urlParams.get('init_data');
+        if (customInit) {
+            initData = decodeURIComponent(customInit);
+        }
+    }
+
+    // Если initData всё ещё пустая – сообщаем об ошибке, но не блокируем UI
+    if (!initData) {
+        console.warn('initData not available. Will try to send anyway, but backend may reject.');
+        // Можно попытаться отправить запрос без initData, но бэкенд вернёт ошибку.
+        // Показываем предупреждение.
+        showErrorToast('Не удалось получить данные авторизации. Убедитесь, что вы открыли приложение через Telegram.');
     }
 
     ui.analyzeBtn.addEventListener('click', async () => {
@@ -33,8 +61,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Если нет initData, пробуем отправить всё равно (бэкенд отклонит)
         if (!initData) {
-            showErrorToast('Не удалось получить данные авторизации. Откройте приложение через Telegram.');
+            showErrorToast('Нет данных авторизации. Откройте приложение через Telegram.');
             return;
         }
 
