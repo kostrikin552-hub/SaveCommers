@@ -1,4 +1,4 @@
-import { BOT_USERNAME } from './constants.js';
+import { BOT_USERNAME, TEMPLATES, EXAMPLE_DIALOG } from './constants.js';
 import { copyText } from './share.js';
 import { showAchievementToast, showErrorToast, showToast } from './toast.js';
 
@@ -278,4 +278,4 @@ export class UIRenderer {
     showError(message) {
         showErrorToast(message);
     }
-  }
+}
