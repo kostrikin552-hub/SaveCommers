@@ -71,7 +71,12 @@ def handle_progress(update: Dict[str, Any]) -> None:
         last = scores[-1] if scores else 0
         trend = "📈 растёт" if len(scores) > 1 and scores[-1] > scores[-2] else "📉 пока не растёт"
         msg = (
-            f"📊 <b>Ваш прогресс</b>\n\nВсего анализов: {len(history)}\nСредний балл: {avg}/100\nПоследний анализ: {last}/100\nТренд: {trend}\nБесплатных анализов использовано: {free_used}\n"
+            f"📊 <b>Ваш прогресс</b>\n\n"
+            f"Всего анализов: {len(history)}\n"
+            f"Средний балл: {avg}/100\n"
+            f"Последний анализ: {last}/100\n"
+            f"Тренд: {trend}\n"
+            f"Бесплатных анализов использовано: {free_used}\n"
         )
         if weaknesses:
             msg += "\n<b>Топ ошибок:</b>\n"
