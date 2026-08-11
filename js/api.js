@@ -124,4 +124,4 @@ export class API {
         const body = { user_id: userId };
         return this.request('/api/profile', body);
     }
-          }
+}
