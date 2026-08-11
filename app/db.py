@@ -16,7 +16,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is required")
 
-# ThreadedConnectionPool для многопоточного использования
 connection_pool = pool.ThreadedConnectionPool(1, 10, dsn=DATABASE_URL)
 
 @contextmanager
@@ -47,7 +46,6 @@ def execute_query(query: str, params: tuple = (), fetch_one: bool = False, fetch
             return cur.rowcount
 
 def init_db():
-    """Создаёт все необходимые таблицы, если их нет."""
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -86,6 +84,17 @@ def init_db():
                     positives TEXT,
                     negatives TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS analysis_requests (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT REFERENCES users(id),
+                    idempotency_key TEXT,
+                    status TEXT DEFAULT 'pending',
+                    response_json TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    processing_started_at TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    UNIQUE(user_id, idempotency_key)
                 );
                 CREATE TABLE IF NOT EXISTS analysis_queue (
                     id SERIAL PRIMARY KEY,
@@ -186,7 +195,6 @@ def init_db():
                     used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-            # Индексы
             cur.execute("CREATE INDEX IF NOT EXISTS idx_sub_user ON subscriptions(user_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_sub_active ON subscriptions(user_id, is_active)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_sub_user_active_end ON subscriptions(user_id, is_active, end_date)")
@@ -254,7 +262,7 @@ def generate_signed_url(
 def main_menu() -> dict:
     return {
         "keyboard": [
-            [{"text": "🚀 Новый análisis"}],
+            [{"text": "🚀 Новый анализ"}],
             [{"text": "💎 Тарифы"}, {"text": "💰 Баланс"}],
             [{"text": "📊 Мой прогресс"}, {"text": "👥 Пригласить друга"}],
             [{"text": "📖 Примеры"}, {"text": "📢 Канал с кейсами"}],
