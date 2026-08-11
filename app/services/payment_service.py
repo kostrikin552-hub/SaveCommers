@@ -4,7 +4,7 @@ import requests
 import os
 from decimal import Decimal
 from typing import Optional, Dict, Tuple
-from datetime import datetime, timezone
+from datetime import datetime
 
 from ..db import execute_query, get_connection, transaction
 from ..repositories.payment_repo import (
@@ -97,12 +97,21 @@ def create_yookassa_payment(user_id: int, plan: str, promo_code: Optional[str] =
         )
         if resp.status_code in (200, 201):
             r = resp.json()
-            yookassa_payment_id = r['id']
-            update_payment_status(yookassa_payment_id, 'pending')
+            yookassa_payment_id = r["id"]
+            execute_query(
+                """UPDATE payments
+                   SET payment_id = %s, status = 'pending'
+                   WHERE idempotence_key = %s AND status = 'creating'""",
+                (yookassa_payment_id, idempotence_key),
+            )
             return r, yookassa_payment_id
         else:
             logger.error(f"YooKassa error: {resp.status_code} {resp.text}")
-            set_payment_failed(idempotence_key)
+            execute_query(
+                """UPDATE payments SET status = 'failed'
+                   WHERE idempotence_key = %s AND status = 'creating'""",
+                (idempotence_key,),
+            )
             return None, f"Ошибка оплаты: {resp.status_code}"
     except Exception as e:
         logger.exception("YooKassa request failed")
@@ -161,17 +170,4 @@ def process_successful_payment(yookassa_payment_id: str) -> bool:
     with get_connection() as conn:
         with transaction(conn):
             cur = conn.cursor()
-            cur.execute("SELECT status FROM payments WHERE payment_id = %s AND status = 'processing'", (yookassa_payment_id,))
-            if not cur.fetchone():
-                logger.info(f"Payment {yookassa_payment_id} already processed by concurrent request")
-                return False
-            activate_subscription(user_id, plan)
-            award_referral_bonus(user_id, amount_kop, yookassa_payment_id)
-            cur.execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = %s AND status = 'processing'", (yookassa_payment_id,))
-            conn.commit()
-            logger.info(f"Payment {yookassa_payment_id} processed successfully")
-            try:
-                send_msg(user_id, f"🎉 Оплата прошла! Ваш тариф {PLANS[plan]['name']} активирован на {days} дней.", bot_token=os.getenv('BOT_TOKEN'))
-            except:
-                pass
-            return True
+            cur
