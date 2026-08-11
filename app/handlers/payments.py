@@ -2,8 +2,7 @@ import logging
 from html import escape
 from typing import Dict, Any
 from ..services.payment_service import create_yookassa_payment, apply_promo_code
-from ..services.subscription_service import get_subscription, get_trial_days_left
-from ..models_payments import activate_trial
+from ..services.subscription_service import get_subscription, get_trial_days_left, activate_trial
 from ..db import tariffs_kb
 from ..config import PLANS, PROMO_CODE, FREE_ANALYSIS_LIMIT
 from ..utils import send_msg, answer_cb
