@@ -84,6 +84,7 @@ def init_db():
                     status TEXT DEFAULT 'creating',
                     idempotence_key TEXT UNIQUE,
                     payment_id TEXT,
+                    promo_code TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     processing_started_at TIMESTAMP
                 );
@@ -283,12 +284,21 @@ def main_menu() -> dict:
     }
 
 def tariffs_kb(user_id: Optional[int] = None) -> dict:
+    from ..config import PROMO_CODE, PROMO_LIMIT
     keyboard = [
         [{"text": "🚀 Pro (990₽/мес)", "callback_data": "tariff_pro"}],
         [{"text": "🏆 Premium (1990₽/мес)", "callback_data": "tariff_premium"}],
         [{"text": "🎁 3 дня бесплатно", "callback_data": "trial"}],
-        [{"text": "🔥 Pro за 299₽", "callback_data": "tariff_pro_promo"}]
     ]
+    # Проверяем, сколько раз использован промокод
+    used = execute_query(
+        "SELECT COUNT(*) FROM payments WHERE promo_code = %s AND status = 'succeeded'",
+        (PROMO_CODE,),
+        fetch_one=True
+    )
+    used_count = used['count'] if used else 0
+    if used_count < PROMO_LIMIT:
+        keyboard.append([{"text": "🔥 Pro за 299₽", "callback_data": "tariff_pro_promo"}])
     return {"inline_keyboard": keyboard}
 
 def set_state(user_id: int, state: str, data: Optional[dict] = None) -> None:
