@@ -4,6 +4,19 @@ import { showErrorToast, showToast } from './toast.js';
 import { EXAMPLE_DIALOG } from './constants.js';
 
 document.addEventListener('DOMContentLoaded', () => {
+    // === ИНИЦИАЛИЗАЦИЯ TELEGRAM WEBAPP ===
+    if (window.Telegram && window.Telegram.WebApp) {
+        try {
+            Telegram.WebApp.ready();
+            Telegram.WebApp.expand();
+            console.log('Telegram WebApp ready and expanded.');
+        } catch (e) {
+            console.warn('Error initializing Telegram WebApp:', e);
+        }
+    } else {
+        console.warn('Telegram WebApp not available (opened in browser?)');
+    }
+
     const api = new API();
     const ui = new UIRenderer();
 
@@ -13,34 +26,41 @@ document.addEventListener('DOMContentLoaded', () => {
     // === ПОЛУЧЕНИЕ initData ===
     let initData = '';
 
-    // 1. Попытка получить через Telegram WebApp API
+    // 1. Через Telegram WebApp API
     if (window.Telegram && window.Telegram.WebApp) {
-        initData = window.Telegram.WebApp.initData || '';
-        // Если не получилось, пытаемся получить из URL (fallback)
-        if (!initData) {
+        try {
+            initData = window.Telegram.WebApp.initData || '';
+            console.log('initData from Telegram.WebApp:', initData ? initData.substring(0, 100) + '...' : 'empty');
+        } catch (e) {
+            console.warn('Error accessing Telegram.WebApp.initData:', e);
+        }
+    }
+
+    // 2. Fallback: из URL-параметров (если открыто вручную)
+    if (!initData) {
+        try {
             const urlParams = new URLSearchParams(window.location.search);
             const tgData = urlParams.get('tgWebAppData');
             if (tgData) {
                 initData = decodeURIComponent(tgData);
+                console.log('initData from URL param tgWebAppData');
+            } else {
+                const customInit = urlParams.get('init_data');
+                if (customInit) {
+                    initData = decodeURIComponent(customInit);
+                    console.log('initData from URL param init_data');
+                }
             }
+        } catch (e) {
+            console.warn('Error reading URL params:', e);
         }
     }
 
-    // Если всё ещё нет – пытаемся из параметра init_data (кастомный)
     if (!initData) {
-        const urlParams = new URLSearchParams(window.location.search);
-        const customInit = urlParams.get('init_data');
-        if (customInit) {
-            initData = decodeURIComponent(customInit);
-        }
-    }
-
-    // Если initData всё ещё пустая – сообщаем об ошибке, но не блокируем UI
-    if (!initData) {
-        console.warn('initData not available. Will try to send anyway, but backend may reject.');
-        // Можно попытаться отправить запрос без initData, но бэкенд вернёт ошибку.
-        // Показываем предупреждение.
-        showErrorToast('Не удалось получить данные авторизации. Убедитесь, что вы открыли приложение через Telegram.');
+        console.error('initData not found. Make sure you opened WebApp from Telegram button.');
+        showErrorToast('Не удалось получить данные авторизации. Откройте приложение через Telegram.');
+    } else {
+        console.log('initData successfully obtained.');
     }
 
     ui.analyzeBtn.addEventListener('click', async () => {
@@ -61,7 +81,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Если нет initData, пробуем отправить всё равно (бэкенд отклонит)
         if (!initData) {
             showErrorToast('Нет данных авторизации. Откройте приложение через Telegram.');
             return;
@@ -129,17 +148,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Применяем тему Telegram
     if (window.Telegram && window.Telegram.WebApp) {
-        Telegram.WebApp.ready();
-        Telegram.WebApp.expand();
-        const theme = Telegram.WebApp.themeParams;
-        if (theme) {
-            document.documentElement.style.setProperty('--tg-theme-bg-color', theme.bg_color || '#f0f9f6');
-            document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', theme.secondary_bg_color || '#ffffff');
-            document.documentElement.style.setProperty('--tg-theme-text-color', theme.text_color || '#0f2e2a');
-            document.documentElement.style.setProperty('--tg-theme-hint-color', theme.hint_color || '#6b7280');
-            document.documentElement.style.setProperty('--tg-theme-button-color', theme.button_color || '#1a6b5a');
-            document.documentElement.style.setProperty('--tg-theme-button-text-color', theme.button_text_color || '#ffffff');
+        try {
+            const theme = Telegram.WebApp.themeParams;
+            if (theme) {
+                document.documentElement.style.setProperty('--tg-theme-bg-color', theme.bg_color || '#f0f9f6');
+                document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', theme.secondary_bg_color || '#ffffff');
+                document.documentElement.style.setProperty('--tg-theme-text-color', theme.text_color || '#0f2e2a');
+                document.documentElement.style.setProperty('--tg-theme-hint-color', theme.hint_color || '#6b7280');
+                document.documentElement.style.setProperty('--tg-theme-button-color', theme.button_color || '#1a6b5a');
+                document.documentElement.style.setProperty('--tg-theme-button-text-color', theme.button_text_color || '#ffffff');
+            }
+        } catch (e) {
+            console.warn('Error applying theme:', e);
         }
     }
 });
