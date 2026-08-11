@@ -1,6 +1,6 @@
 import { API } from './api.js';
 import { UIRenderer } from './ui.js';
-import { showErrorToast } from './toast.js';
+import { showErrorToast, showToast } from './toast.js';
 import { EXAMPLE_DIALOG } from './constants.js';
 
 document.addEventListener('DOMContentLoaded', () => {
