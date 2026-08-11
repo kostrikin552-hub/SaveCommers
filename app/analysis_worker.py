@@ -9,6 +9,7 @@ from .repositories.analysis_repo import save_analysis_history, get_analysis_coun
 from .repositories.user_repo import get_user
 from .config import ANALYSIS_TIMEOUT, FREE_ANALYSIS_LIMIT, BOT_TOKEN
 from .utils import send_msg
+from psycopg2 import extras
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ def analysis_worker_loop():
         try:
             with get_connection() as conn:
                 with transaction(conn):
-                    cur = conn.cursor()
+                    cur = conn.cursor(cursor_factory=extras.RealDictCursor)
                     cur.execute(
                         """SELECT id, user_id, dialog, idempotency_key
                            FROM analysis_queue
