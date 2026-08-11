@@ -69,8 +69,9 @@ def check_pending_payments_loop():
             )
             if recovered:
                 logger.info(f"Recovered {recovered} stuck processing payments")
+
             stuck_creating = execute_query(
-                "SELECT * FROM payments WHERE status = 'creating' AND created_at < NOW() - INTERVAL 15 MINUTE",
+                "SELECT * FROM payments WHERE status = 'creating' AND created_at < NOW() - INTERVAL '15 minutes'",
                 fetch_all=True
             )
             for payment in stuck_creating:
@@ -79,6 +80,7 @@ def check_pending_payments_loop():
                         "UPDATE payments SET status = 'failed' WHERE idempotence_key = %s AND status = 'creating'",
                         (payment['idempotence_key'],)
                     )
+
             pending = execute_query(
                 """SELECT * FROM payments
                    WHERE status = 'pending'
@@ -99,6 +101,7 @@ def check_pending_payments_loop():
                         set_payment_failed(yookassa_payment_id)
                 except Exception as e:
                     logger.exception(f"Error processing payment {yookassa_payment_id} in worker: {e}")
+
         except Exception as e:
             logger.exception("Payment worker error")
         time.sleep(PAYMENT_CHECK_INTERVAL)
