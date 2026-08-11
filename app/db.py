@@ -50,7 +50,7 @@ def init_db():
         with conn.cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS users (
-                    id BIGINT PRIMARY KEY,
+                    user_id BIGINT PRIMARY KEY,
                     username TEXT,
                     first_name TEXT,
                     last_name TEXT,
@@ -58,7 +58,7 @@ def init_db():
                 );
                 CREATE TABLE IF NOT EXISTS subscriptions (
                     id SERIAL PRIMARY KEY,
-                    user_id BIGINT REFERENCES users(id),
+                    user_id BIGINT REFERENCES users(user_id),
                     plan_type TEXT NOT NULL,
                     status TEXT DEFAULT 'active',
                     start_date TIMESTAMP NOT NULL,
@@ -87,7 +87,7 @@ def init_db():
                 );
                 CREATE TABLE IF NOT EXISTS analysis_requests (
                     id SERIAL PRIMARY KEY,
-                    user_id BIGINT REFERENCES users(id),
+                    user_id BIGINT REFERENCES users(user_id),
                     idempotency_key TEXT,
                     status TEXT DEFAULT 'pending',
                     response_json TEXT,
@@ -132,19 +132,19 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS companies (
                     id SERIAL PRIMARY KEY,
                     name TEXT,
-                    owner_id BIGINT REFERENCES users(id),
+                    owner_id BIGINT REFERENCES users(user_id),
                     invite_code TEXT UNIQUE
                 );
                 CREATE TABLE IF NOT EXISTS company_members (
                     company_id INTEGER REFERENCES companies(id),
-                    user_id BIGINT REFERENCES users(id),
+                    user_id BIGINT REFERENCES users(user_id),
                     role TEXT DEFAULT 'member',
                     PRIMARY KEY (company_id, user_id)
                 );
                 CREATE TABLE IF NOT EXISTS referrals (
                     id SERIAL PRIMARY KEY,
-                    referrer_id BIGINT REFERENCES users(id),
-                    referred_id BIGINT REFERENCES users(id),
+                    referrer_id BIGINT REFERENCES users(user_id),
+                    referred_id BIGINT REFERENCES users(user_id),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE TABLE IF NOT EXISTS referral_earnings (
