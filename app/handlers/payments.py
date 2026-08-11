@@ -48,7 +48,7 @@ def handle_payment_callback(update: Dict[str, Any]) -> None:
             return
         confirmation_url = escape(confirmation_url, quote=True)
         text = (
-            f"💳 <b>Оплата Pro за 299 ₽</b>\n\n"
+            f"💳 <b>Оплата Pro за {price} ₽</b>\n\n"
             f"Перейдите по ссылке для оплаты:\n<a href='{confirmation_url}'>Оплатить</a>\n\n"
             "После успешной оплаты подписка активируется автоматически."
         )
