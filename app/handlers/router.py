@@ -51,7 +51,6 @@ def process_update(update: Dict[str, Any]) -> None:
         user_id = message.get("from", {}).get("id")
         bot_token = update.get("bot_token")
 
-        # Если сообщение начинается с команд
         if text.startswith("/start"):
             handle_start(update)
         elif text.startswith("/admin"):
@@ -59,7 +58,6 @@ def process_update(update: Dict[str, Any]) -> None:
         elif text.startswith("/support"):
             handle_support_message(update)
         else:
-            # Обработка кнопок меню (текстовые)
             if text.lower() in ["🚀 новый анализ", "анализ"]:
                 handle_analysis_message(update)
             elif text.lower() in ["💎 тарифы", "тарифы"]:
@@ -105,7 +103,6 @@ def process_update(update: Dict[str, Any]) -> None:
                         f"Чат: {chat_id}"
                     )
                     send_msg(ADMIN_ID, admin_text, bot_token=bot_token, disable_preview=True)
-                    # Отвечаем пользователю
                     send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
                 except Exception as e:
                     logger.exception("Error forwarding message to admin")
