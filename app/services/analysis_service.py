@@ -1,7 +1,7 @@
 import logging
 import json
 from typing import Optional, Tuple, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime
 
 from ..db import get_connection, transaction, execute_query
 from ..repositories.analysis_repo import (
@@ -45,7 +45,7 @@ def reserve_free_analysis(user_id: int, idempotency_key: Optional[str] = None) -
                         return False, "Запрос уже выполнен"
                     if status == 'processing':
                         started = row['processing_started_at'] or row['created_at']
-                        age = (datetime.now(timezone.utc) - started).total_seconds()
+                        age = (datetime.utcnow() - started).total_seconds()
                         if age <= 600:
                             return False, "Анализ уже выполняется"
                         cur.execute(
