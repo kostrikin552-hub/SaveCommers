@@ -15,7 +15,6 @@ def handle_analysis_message(update: Dict[str, Any]) -> None:
     bot_token = update.get("bot_token")
 
     dialog = message.get("text", "")
-    # Если пользователь отправил текст диалога напрямую – ставим в очередь
     if dialog and len(dialog.strip()) > 10:
         execute_query(
             "INSERT INTO analysis_queue (user_id, dialog, status) VALUES (%s, %s, 'pending')",
@@ -28,12 +27,10 @@ def handle_analysis_message(update: Dict[str, Any]) -> None:
         )
         return
 
-    # Генерируем подписанную ссылку на WebApp
     sub = get_subscription(user_id)
     has_sub = 1 if (sub and sub['is_active'] == 1 and datetime.now(timezone.utc) < sub['end_date']) else 0
     url = generate_signed_url(user_id, has_sub, SECRET_KEY, WEBAPP_URL, BACKEND_URL)
 
-    # Отправляем сообщение с inline-кнопкой "Открыть WebApp"
     text = "📝 Вставьте переписку с клиентом и получите разбор за 60 секунд."
     kb = {
         "inline_keyboard": [
