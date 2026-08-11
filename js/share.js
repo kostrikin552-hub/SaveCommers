@@ -22,4 +22,4 @@ function fallbackCopy(text) {
         console.error('Copy failed', e);
     }
     document.body.removeChild(textarea);
-}
+    }
