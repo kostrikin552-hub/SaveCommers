@@ -89,8 +89,12 @@ def notification_loop():
         try:
             send_followup_reminder()
             expiring = execute_query(
-                "SELECT * FROM subscriptions WHERE is_active = TRUE AND end_date > NOW() AND end_date <= NOW() + INTERVAL %s DAY ORDER BY end_date",
-                (EXPIRING_DAYS,), fetch_all=True
+                """SELECT * FROM subscriptions
+                   WHERE is_active = TRUE AND end_date > NOW()
+                     AND end_date <= NOW() + (%s * INTERVAL '1 day')
+                   ORDER BY end_date""",
+                (EXPIRING_DAYS,),
+                fetch_all=True
             )
             for sub in expiring:
                 remaining = days_left(sub['user_id'])
