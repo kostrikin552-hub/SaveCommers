@@ -29,4 +29,4 @@ export function showAchievementToast(title, desc) {
 
 export function showErrorToast(message) {
     showToast('❌ ' + message, 'error');
-}
+                              }
