@@ -48,6 +48,17 @@ def execute_query(query: str, params: tuple = (), fetch_one: bool = False, fetch
 def init_db():
     with get_connection() as conn:
         with conn.cursor() as cur:
+            # === МИГРАЦИЯ: переименовать id -> user_id ===
+            cur.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='users' AND column_name='id'
+            """)
+            if cur.fetchone():
+                cur.execute("ALTER TABLE users RENAME COLUMN id TO user_id;")
+                logger.info("Migration: column id renamed to user_id")
+
+            # === СОЗДАНИЕ ТАБЛИЦ ===
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     user_id BIGINT PRIMARY KEY,
