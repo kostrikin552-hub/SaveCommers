@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any
 from datetime import datetime, timezone
 from ..services.subscription_service import get_subscription, get_trial_days_left
-from ..db import execute_query, generate_signed_url, set_state, get_state_data, clear_state
+from ..db import execute_query, set_state, get_state_data, clear_state
 from ..utils import send_msg, answer_cb
 from ..config import SECRET_KEY, WEBAPP_URL, BACKEND_URL, BOT_USERNAME, PROMO_CODE
 
@@ -20,14 +20,11 @@ def handle_analysis_message(update: Dict[str, Any]) -> None:
     analysis_commands = ["🚀 новый анализ", "анализ"]
 
     if dialog.lower() in analysis_commands:
-        sub = get_subscription(user_id)
-        has_sub = 1 if (sub and sub['is_active'] == 1 and datetime.now(timezone.utc) < sub['end_date']) else 0
-        url = generate_signed_url(user_id, has_sub, SECRET_KEY, WEBAPP_URL, BACKEND_URL)
-
+        # Просто ссылка на WebApp без подписи – Telegram сам передаст initData
         text = "📝 Вставьте переписку с клиентом и получите разбор за 60 секунд."
         kb = {
             "inline_keyboard": [
-                [{"text": "🚀 Открыть анализатор", "web_app": {"url": url}}]
+                [{"text": "🚀 Открыть анализатор", "web_app": {"url": WEBAPP_URL}}]
             ]
         }
         send_msg(chat_id, text, bot_token=bot_token, kb=kb, disable_preview=True)
@@ -55,13 +52,10 @@ def handle_analysis_callback(update: Dict[str, Any]) -> None:
     bot_token = update.get("bot_token")
 
     if data == "analysis_retry" or data == "start_analysis":
-        sub = get_subscription(user_id)
-        has_sub = 1 if (sub and sub['is_active'] == 1 and datetime.now(timezone.utc) < sub['end_date']) else 0
-        url = generate_signed_url(user_id, has_sub, SECRET_KEY, WEBAPP_URL, BACKEND_URL)
         text = "📝 Открой WebApp и вставь переписку:"
         kb = {
             "inline_keyboard": [
-                [{"text": "🚀 Открыть анализатор", "web_app": {"url": url}}]
+                [{"text": "🚀 Открыть анализатор", "web_app": {"url": WEBAPP_URL}}]
             ]
         }
         send_msg(chat_id, text, bot_token=bot_token, kb=kb, disable_preview=True)
