@@ -1,14 +1,22 @@
 import json
 import logging
 from urllib.parse import parse_qs, urlparse
-from datetime import datetime, timezone
+from datetime import datetime
 
 from ..config import BOT_TOKEN, MAX_DIALOG_LENGTH
 from ..db import get_connection, transaction, execute_query
 from ..services.analysis_service import perform_analysis, get_cached_analysis, reserve_free_analysis, rollback_free_analysis
 from ..services.subscription_service import get_subscription, days_left
 from ..services.referral_service import get_referral_stats, get_balance, get_referral_status
-from ..repositories.analysis_repo import get_user_weaknesses, get_analysis_history, get_user_usage, get_analysis_request, delete_analysis_request, create_analysis_request
+from ..repositories.analysis_repo import (
+    get_user_weaknesses,
+    get_analysis_history,
+    get_user_usage,
+    get_analysis_count,
+    get_analysis_request,
+    delete_analysis_request,
+    create_analysis_request
+)
 from ..repositories.user_repo import upsert_user, get_user
 from ..utils.telegram_utils import verify_init_data
 from ..db import execute_query as db_exec
@@ -66,7 +74,7 @@ def handle_api_analyze(handler, body):
             req = get_analysis_request(user_id, idempotency_key)
             if req and req['status'] == 'processing':
                 started = req['processing_started_at'] or req['created_at']
-                age = (datetime.now(timezone.utc) - started).total_seconds()
+                age = (datetime.utcnow() - started).total_seconds()
                 if age <= 600:
                     handler.send_json_response(409, {"status": "error", "message": "Анализ уже выполняется"})
                     return
