@@ -14,8 +14,28 @@ def handle_analysis_message(update: Dict[str, Any]) -> None:
     user_id = message.get("from", {}).get("id")
     bot_token = update.get("bot_token")
 
-    dialog = message.get("text", "")
-    if dialog and len(dialog.strip()) > 10:
+    dialog = message.get("text", "").strip()
+
+    # Команды меню, которые открывают WebApp
+    analysis_commands = ["🚀 новый анализ", "анализ"]
+
+    # Если текст является командой открытия WebApp
+    if dialog.lower() in analysis_commands:
+        sub = get_subscription(user_id)
+        has_sub = 1 if (sub and sub['is_active'] == 1 and datetime.now(timezone.utc) < sub['end_date']) else 0
+        url = generate_signed_url(user_id, has_sub, SECRET_KEY, WEBAPP_URL, BACKEND_URL)
+
+        text = "📝 Вставьте переписку с клиентом и получите разбор за 60 секунд."
+        kb = {
+            "inline_keyboard": [
+                [{"text": "🚀 Открыть анализатор", "url": url}]
+            ]
+        }
+        send_msg(chat_id, text, bot_token=bot_token, kb=kb, disable_preview=True)
+        return
+
+    # Иначе считаем, что это диалог для анализа
+    if len(dialog) > 10:
         execute_query(
             "INSERT INTO analysis_queue (user_id, dialog, status) VALUES (%s, %s, 'pending')",
             (user_id, dialog)
@@ -25,19 +45,8 @@ def handle_analysis_message(update: Dict[str, Any]) -> None:
             "⏳ Анализ начат! Результат появится через минуту.\nЯ пришлю уведомление, когда всё будет готово.",
             bot_token=bot_token
         )
-        return
-
-    sub = get_subscription(user_id)
-    has_sub = 1 if (sub and sub['is_active'] == 1 and datetime.now(timezone.utc) < sub['end_date']) else 0
-    url = generate_signed_url(user_id, has_sub, SECRET_KEY, WEBAPP_URL, BACKEND_URL)
-
-    text = "📝 Вставьте переписку с клиентом и получите разбор за 60 секунд."
-    kb = {
-        "inline_keyboard": [
-            [{"text": "🚀 Открыть анализатор", "url": url}]
-        ]
-    }
-    send_msg(chat_id, text, bot_token=bot_token, kb=kb, disable_preview=True)
+    else:
+        send_msg(chat_id, "Диалог слишком короткий. Введите минимум 10 символов.", bot_token=bot_token)
 
 def handle_analysis_callback(update: Dict[str, Any]) -> None:
     query = update["callback_query"]
