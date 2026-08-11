@@ -35,25 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    if (!initData) {
-        try {
-            const urlParams = new URLSearchParams(window.location.search);
-            const tgData = urlParams.get('tgWebAppData');
-            if (tgData) {
-                initData = decodeURIComponent(tgData);
-                console.log('initData from URL param tgWebAppData');
-            } else {
-                const customInit = urlParams.get('init_data');
-                if (customInit) {
-                    initData = decodeURIComponent(customInit);
-                    console.log('initData from URL param init_data');
-                }
-            }
-        } catch (e) {
-            console.warn('Error reading URL params:', e);
-        }
-    }
-
+    // Если нет initData – показываем ошибку, но не блокируем UI
     if (!initData) {
         console.error('initData not found. Make sure you opened WebApp from Telegram button.');
         showErrorToast('Не удалось получить данные авторизации. Откройте приложение через Telegram.');
@@ -134,8 +116,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // === УБРАНА АВТОМАТИЧЕСКАЯ ВСТАВКА ПРИМЕРА ===
-    // Теперь поле ввода остаётся пустым при загрузке.
+    // Убираем авто-вставку примера
+    ui.dialogInput.value = '';
+    ui.updateCounters();
 
     ui.dialogInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
