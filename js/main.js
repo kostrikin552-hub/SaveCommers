@@ -26,7 +26,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // === ПОЛУЧЕНИЕ initData ===
     let initData = '';
 
-    // 1. Через Telegram WebApp API
     if (window.Telegram && window.Telegram.WebApp) {
         try {
             initData = window.Telegram.WebApp.initData || '';
@@ -36,7 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 2. Fallback: из URL-параметров (если открыто вручную)
     if (!initData) {
         try {
             const urlParams = new URLSearchParams(window.location.search);
@@ -136,10 +134,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    if (!ui.dialogInput.value) {
-        ui.dialogInput.value = EXAMPLE_DIALOG;
-        ui.updateCounters();
-    }
+    // === УБРАНА АВТОМАТИЧЕСКАЯ ВСТАВКА ПРИМЕРА ===
+    // Теперь поле ввода остаётся пустым при загрузке.
 
     ui.dialogInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -148,7 +144,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Применяем тему Telegram
     if (window.Telegram && window.Telegram.WebApp) {
         try {
             const theme = Telegram.WebApp.themeParams;
