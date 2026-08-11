@@ -19,7 +19,6 @@ def handle_analysis_message(update: Dict[str, Any]) -> None:
     # Команды меню, которые открывают WebApp
     analysis_commands = ["🚀 новый анализ", "анализ"]
 
-    # Если текст является командой открытия WebApp
     if dialog.lower() in analysis_commands:
         sub = get_subscription(user_id)
         has_sub = 1 if (sub and sub['is_active'] == 1 and datetime.now(timezone.utc) < sub['end_date']) else 0
@@ -28,7 +27,7 @@ def handle_analysis_message(update: Dict[str, Any]) -> None:
         text = "📝 Вставьте переписку с клиентом и получите разбор за 60 секунд."
         kb = {
             "inline_keyboard": [
-                [{"text": "🚀 Открыть анализатор", "url": url}]
+                [{"text": "🚀 Открыть анализатор", "web_app": {"url": url}}]
             ]
         }
         send_msg(chat_id, text, bot_token=bot_token, kb=kb, disable_preview=True)
@@ -62,7 +61,7 @@ def handle_analysis_callback(update: Dict[str, Any]) -> None:
         text = "📝 Открой WebApp и вставь переписку:"
         kb = {
             "inline_keyboard": [
-                [{"text": "🚀 Открыть анализатор", "url": url}]
+                [{"text": "🚀 Открыть анализатор", "web_app": {"url": url}}]
             ]
         }
         send_msg(chat_id, text, bot_token=bot_token, kb=kb, disable_preview=True)
