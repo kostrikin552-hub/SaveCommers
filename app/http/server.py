@@ -6,7 +6,12 @@ from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
 from collections import defaultdict, deque
 from ..config import PORT, MAX_BODY_SIZE, RATE_LIMIT_WINDOW, RATE_LIMIT_REQUESTS, WEBAPP_URL
-from .api import handle_api_analyze, handle_api_check_subscription, handle_api_profile
+from .api import (
+    handle_api_analyze,
+    handle_api_check_subscription,
+    handle_api_profile,
+    handle_api_status,
+)
 from .telegram_webhook import handle_telegram_webhook
 from .yookassa_webhook import handle_yookassa_webhook
 
