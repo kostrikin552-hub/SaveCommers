@@ -1,3 +1,4 @@
+// file: js/api.js
 import { API_BASE, REQUEST_TIMEOUT, RETRY_ATTEMPTS, RETRY_DELAYS } from './constants.js';
 
 export class API {
@@ -14,7 +15,6 @@ export class API {
     async request(endpoint, body, idempotencyKey = null, controller = null) {
         const url = `${this.baseUrl}${endpoint}`;
         const key = idempotencyKey || this.idempotencyKey || this.generateIdempotencyKey();
-
         let attempt = 0;
         let lastError = null;
 
@@ -44,7 +44,6 @@ export class API {
                     body: JSON.stringify(body),
                     signal: attemptController.signal,
                 });
-
                 clearTimeout(timeoutId);
 
                 if (!response.ok) {
@@ -71,10 +70,8 @@ export class API {
                     error.status = response.status || 500;
                     throw error;
                 }
-
             } catch (error) {
                 clearTimeout(timeoutId);
-
                 if (error?.name === 'AbortError') {
                     throw new Error('Запрос отменён пользователем');
                 }
@@ -84,20 +81,15 @@ export class API {
                 if (error?.message === 'user_abort') {
                     throw new Error('Запрос отменён пользователем');
                 }
-
                 const status = error.status || 0;
-
                 if (status >= 400 && status < 500 && status !== 429) {
                     throw error;
                 }
-
                 lastError = error;
                 attempt++;
-
                 if (attempt >= RETRY_ATTEMPTS) {
                     throw new Error(`Не удалось выполнить запрос после ${RETRY_ATTEMPTS} попыток: ${lastError.message}`);
                 }
-
                 let delay = RETRY_DELAYS[attempt - 1] || 2000;
                 if (status === 429) {
                     delay = Math.max(delay, 5000);
@@ -105,7 +97,6 @@ export class API {
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
-
         throw new Error('Неизвестная ошибка запроса');
     }
 
@@ -115,13 +106,27 @@ export class API {
         return this.request('/api/analyze', body, key, controller);
     }
 
-    async checkSubscription(userId) {
-        const body = { user_id: userId };
+    async checkSubscription(userId, initData) {
+        const body = { user_id: userId, init_data: initData };
         return this.request('/api/check_subscription', body);
     }
 
-    async getProfile(userId) {
-        const body = { user_id: userId };
+    async getProfile(userId, initData) {
+        const body = { user_id: userId, init_data: initData };
         return this.request('/api/profile', body);
+    }
+
+    async checkStatus(idempotencyKey, initData) {
+        const url = `${this.baseUrl}/api/analysis_status?key=${encodeURIComponent(idempotencyKey)}&init_data=${encodeURIComponent(initData)}`;
+        const response = await fetch(url);
+        if (!response.ok) {
+            let message = `Ошибка ${response.status}`;
+            try {
+                const data = await response.json();
+                message = data?.error || message;
+            } catch (_) {}
+            throw new Error(message);
+        }
+        return response.json();
     }
 }
