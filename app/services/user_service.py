@@ -78,13 +78,10 @@ def days_left(user_id: int) -> int:
     if not sub:
         return 0
     end_date = sub['end_date']
-    # Если end_date пришла как строка (например, из БД в виде ISO), преобразуем в datetime
     if isinstance(end_date, str):
         try:
-            # Пробуем парсить ISO-формат с возможным 'Z'
             end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
         except ValueError:
-            # Если не получилось, пробуем без timezone и добавим UTC
             end_date = datetime.fromisoformat(end_date)
             end_date = end_date.replace(tzinfo=timezone.utc)
     elif end_date.tzinfo is None:
@@ -149,7 +146,6 @@ def process_referral_start(user_id: int, code: str, ip: Optional[str] = None):
 
 def _award_referral_bonus_tx(cur, referred_user_id: int, payment_amount_kopecks: int, payment_id: str) -> None:
     from ..repositories.commerce_repo import get_earning_by_payment, get_referral_by_referred, mark_bonus_given
-    # Проверка статуса платежа
     cur.execute("SELECT status FROM payments WHERE payment_id = %s", (payment_id,))
     row = cur.fetchone()
     if not row or row[0] != 'succeeded':
@@ -192,8 +188,71 @@ def award_referral_bonus(referred_user_id: int, payment_amount_kopecks: int, pay
             _award_referral_bonus_tx(cur, referred_user_id, payment_amount_kopecks, payment_id)
             return True
 
+# ==================== WITHDRAW ====================
+
+def create_withdraw_request(user_id: int, amount_rub: int, method: str, details: str, bank: str, full_name: str) -> Optional[int]:
+    """
+    Создаёт заявку на вывод.
+    amount_rub — сумма в рублях (целое число).
+    Возвращает ID заявки или None, если ошибка.
+    """
+    if amount_rub < 500:
+        logger.warning(f"Withdraw amount {amount_rub} < 500 for user {user_id}")
+        return None
+    amount_kopecks = amount_rub * 100
+    balance = get_balance(user_id)
+    if balance < amount_kopecks:
+        logger.warning(f"Insufficient balance for user {user_id}: {balance} < {amount_kopecks}")
+        return None
+    with get_connection() as conn:
+        with transaction(conn):
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO withdraw_requests (user_id, amount, method, details, bank, full_name, status)
+                   VALUES (%s, %s, %s, %s, %s, %s, 'pending')
+                   RETURNING id""",
+                (user_id, amount_kopecks, method, details, bank, full_name)
+            )
+            request_id = cur.fetchone()[0]
+            return request_id
+
+def approve_withdraw(request_id: int) -> bool:
+    """
+    Подтверждает заявку на вывод, списывает баланс.
+    Возвращает True при успехе.
+    """
+    with get_connection() as conn:
+        with transaction(conn):
+            cur = conn.cursor()
+            cur.execute("SELECT user_id, amount, status FROM withdraw_requests WHERE id = %s FOR UPDATE", (request_id,))
+            row = cur.fetchone()
+            if not row or row['status'] != 'pending':
+                return False
+            user_id = row['user_id']
+            amount = row['amount']
+            # Проверить баланс
+            cur.execute("SELECT balance FROM referral_balances WHERE user_id = %s FOR UPDATE", (user_id,))
+            bal_row = cur.fetchone()
+            if not bal_row or bal_row['balance'] < amount:
+                return False
+            # Списать
+            cur.execute("UPDATE referral_balances SET balance = balance - %s WHERE user_id = %s", (amount, user_id))
+            # Обновить статус заявки
+            cur.execute("UPDATE withdraw_requests SET status = 'completed' WHERE id = %s", (request_id,))
+            return True
+
+def get_withdraw_request(request_id: int) -> Optional[Dict]:
+    return execute_query("SELECT * FROM withdraw_requests WHERE id = %s", (request_id,), fetch_one=True)
+
+def get_pending_withdraw_requests() -> list:
+    return execute_query("SELECT * FROM withdraw_requests WHERE status = 'pending' ORDER BY created_at", fetch_all=True)
+
+# ==================== OLD WITHDRAW (заглушка) ====================
 def withdraw(user_id: int, amount: int, method: str, details: str, bank: str, full_name: str):
-    return False, "Вывод средств временно отключён"
+    # Устаревшая функция, используйте create_withdraw_request
+    return create_withdraw_request(user_id, amount // 100, method, details, bank, full_name)  # amount в копейках?
+
+# ==================== REFERRAL STATUS ====================
 
 def get_referral_status(user_id: int) -> dict:
     count, bonus = get_referral_stats(user_id)
