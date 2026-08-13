@@ -137,6 +137,23 @@ class UIRenderer {
         container.innerHTML = '';
         container.hidden = false;
 
+        // === ПРОВЕРКА: если analysis не объект, показываем ошибку ===
+        if (!analysis || typeof analysis !== 'object' || Array.isArray(analysis)) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-box';
+            let errorMsg = 'Сервер вернул некорректный ответ. Попробуйте ещё раз или обратитесь в поддержку.';
+            if (typeof analysis === 'string') {
+                errorMsg = analysis;
+            }
+            errorDiv.innerHTML = `
+                <strong>❌ Ошибка получения результата</strong>
+                <p>${errorMsg}</p>
+                ${typeof analysis !== 'string' ? `<p style="font-size:12px;color:#666;word-break:break-all;">${JSON.stringify(analysis)}</p>` : ''}
+            `;
+            container.appendChild(errorDiv);
+            return;
+        }
+
         // 1. Риск потери сделки
         if (analysis.money_loss) {
             const ml = analysis.money_loss;
