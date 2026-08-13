@@ -1,10 +1,15 @@
+# file: app/handlers/router.py
 import logging
 from typing import Dict, Any
-from .start import handle_start, handle_progress
-from .analysis import handle_analysis_message, handle_analysis_callback, handle_cases, handle_contact_callback, handle_contact_input
+from .user import (
+    handle_start, handle_progress,
+    handle_analysis_message, handle_analysis_callback, handle_cases,
+    handle_contact_callback, handle_contact_input,
+    handle_support_message, handle_support_callback,
+    process_referral_start, handle_referral_message, handle_referral_callback,
+    handle_company_message, handle_company_callback
+)
 from .payments import handle_payment_callback, handle_payment_message
-from .referrals import handle_referral_callback, handle_referral_message
-from .support import handle_support_callback, handle_support_message
 from .admin import handle_admin_callback, handle_admin_message
 from ..config import B2B_ENABLED, BOT_USERNAME, ADMIN_ID
 from ..utils import send_msg, answer_cb
@@ -17,7 +22,6 @@ def process_update(update: Dict[str, Any]) -> None:
         data = query.get("data", "")
         user_id = query.get("from", {}).get("id")
         logger.info(f"Callback: {data} from user {user_id}")
-
         if data.startswith("tariff_") or data == "trial":
             handle_payment_callback(update)
         elif data == "start_analysis":
@@ -26,8 +30,7 @@ def process_update(update: Dict[str, Any]) -> None:
             handle_referral_callback(update)
         elif data.startswith("company_"):
             if B2B_ENABLED:
-                # handle_company_callback(update)
-                pass
+                handle_company_callback(update)
             else:
                 answer_cb(query["id"], update.get("bot_token"), "B2B временно недоступен")
         elif data.startswith("support_"):
@@ -38,19 +41,15 @@ def process_update(update: Dict[str, Any]) -> None:
             handle_analysis_callback(update)
         elif data.startswith("contact_"):
             handle_contact_callback(update)
-        elif data == "tariff_pro_promo":
-            handle_payment_callback(update)
         else:
             logger.warning(f"Unknown callback data: {data}")
             answer_cb(query["id"], update.get("bot_token"), "Неизвестная команда")
-
     elif "message" in update:
         message = update["message"]
         text = message.get("text", "").strip()
         chat_id = message.get("chat", {}).get("id")
         user_id = message.get("from", {}).get("id")
         bot_token = update.get("bot_token")
-
         if text.startswith("/start"):
             handle_start(update)
         elif text.startswith("/admin"):
@@ -58,50 +57,38 @@ def process_update(update: Dict[str, Any]) -> None:
         elif text.startswith("/support"):
             handle_support_message(update)
         else:
-            if text.lower() in ["🚀 новый анализ", "анализ"]:
+            if text.lower() in ["🚀 новый разбор сделки", "новый разбор сделки", "🚀 проверить переписку", "проверить переписку"]:
                 handle_analysis_message(update)
-            elif text.lower() in ["💎 тарифы", "тарифы"]:
+            elif text.lower() in ["💎 pro доступ", "pro доступ", "💎 тарифы"]:
                 handle_payment_message(update)
             elif text.lower() in ["👥 b2b", "b2b"]:
                 if B2B_ENABLED:
-                    # handle_company_message(update)
-                    pass
+                    handle_company_message(update)
                 else:
                     send_msg(chat_id, "B2B временно недоступен", bot_token=bot_token)
-            elif text.lower() in ["💰 баланс"]:
+            elif text.lower() in ["💰 мой баланс", "баланс"]:
                 handle_referral_message(update)
-            elif text.lower() in ["❓ поддержка"]:
+            elif text.lower() in ["❓ помощь"]:
                 handle_support_message(update)
             elif text.lower() == "🎬 посмотреть пример анализа":
                 update["message"]["text"] = "Клиент: Здравствуйте! Мне нужна консультация.\nВы: Добрый день! Чем могу помочь?\nКлиент: Хочу понять, как повысить продажи.\nВы: Отличная задача! Давайте обсудим вашу текущую стратегию."
                 handle_analysis_message(update)
-            elif text.lower() == "📊 мой прогресс":
+            elif text.lower() == "📈 мой рост":
                 handle_progress(update)
-            elif text.lower() == "👥 пригласить друга":
-                from ..services.referral_service import get_referral_code
+            elif text.lower() == "👥 пригласить команду":
+                from ..services.user_service import get_referral_code
                 code = get_referral_code(user_id)
                 ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{code}"
-                send_msg(
-                    chat_id,
-                    f"👥 <b>Пригласи друга</b>\n\nТвоя реферальная ссылка:\n<code>{ref_link}</code>\n\nЗа каждого приглашённого друга ты получаешь бонусы.\nСтань экспертом — приведи 5 друзей и получи Pro бесплатно!",
-                    bot_token=bot_token
-                )
-            elif text.lower() in ["📖 примеры"]:
+                send_msg(chat_id, f"👥 <b>Пригласить команду</b>\n\nТвоя реферальная ссылка:\n<code>{ref_link}</code>\n\nЗа каждого приглашённого друга ты получаешь бонусы.\nСтань экспертом — приведи 5 друзей и получи Pro бесплатно!", bot_token=bot_token)
+            elif text.lower() in ["📖 сценарии продаж"]:
                 handle_cases(update)
             elif text.lower() in ["📢 канал с кейсами"]:
                 send_msg(chat_id, "📢 Подпишитесь на наш канал с кейсами:\nhttps://t.me/SaleFlow_News", bot_token=bot_token)
             else:
-                # Любое другое сообщение пересылаем админу
                 try:
                     user = message.get("from", {})
                     user_mention = f"@{user.get('username')}" if user.get('username') else f"[{user.get('first_name', '')}](tg://user?id={user_id})"
-                    admin_text = (
-                        f"📩 <b>Сообщение от пользователя</b>\n"
-                        f"ID: {user_id}\n"
-                        f"Имя: {user_mention}\n"
-                        f"Текст: {text[:4000]}\n"
-                        f"Чат: {chat_id}"
-                    )
+                    admin_text = f"📩 <b>Сообщение от пользователя</b>\nID: {user_id}\nИмя: {user_mention}\nТекст: {text[:4000]}\nЧат: {chat_id}"
                     send_msg(ADMIN_ID, admin_text, bot_token=bot_token, disable_preview=True)
                     send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
                 except Exception as e:
