@@ -136,8 +136,9 @@ class UIRenderer {
         const container = this.resultContainer;
         container.innerHTML = '';
         container.hidden = false;
+        container.classList.add('fade-in');
 
-        // === ПРОВЕРКА: если analysis не объект, показываем ошибку ===
+        // Проверка на корректность analysis
         if (!analysis || typeof analysis !== 'object' || Array.isArray(analysis)) {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'error-box';
@@ -185,17 +186,22 @@ class UIRenderer {
             container.appendChild(reasonsDiv);
         }
 
-        // 3. Sales Health Score
+        // 3. Sales Health Score (прогресс-бар)
         if (analysis.sales_health_score !== undefined) {
-            const healthDiv = document.createElement('div');
             const healthScore = analysis.sales_health_score;
-            healthDiv.className = 'score ' + (healthScore >= 70 ? 'good' : healthScore >= 50 ? 'medium' : 'bad');
-            healthDiv.textContent = healthScore + '%';
-            container.appendChild(healthDiv);
-            const healthLabel = document.createElement('div');
-            healthLabel.className = 'score-label';
-            healthLabel.textContent = 'Sales Health Score (здоровье продаж)';
-            container.appendChild(healthLabel);
+            const wrapper = document.createElement('div');
+            wrapper.className = 'score-wrapper';
+            const cls = healthScore >= 70 ? 'good' : healthScore >= 50 ? 'medium' : 'bad';
+            wrapper.innerHTML = `
+                <div class="score-label">
+                    <span>Sales Health Score</span>
+                    <span>${healthScore}%</span>
+                </div>
+                <div class="score-bar">
+                    <div class="score-bar-fill ${cls}" style="width: ${healthScore}%;"></div>
+                </div>
+            `;
+            container.appendChild(wrapper);
         }
 
         // 4. Прогресс
@@ -232,17 +238,22 @@ class UIRenderer {
             container.appendChild(checklistDiv);
         }
 
-        // 7. Оценка продавца
+        // 7. Оценка продавца (прогресс-бар)
         if (analysis.score !== undefined) {
-            const scoreDiv = document.createElement('div');
             const score = analysis.score;
-            scoreDiv.className = 'score ' + (score >= 70 ? 'good' : score >= 50 ? 'medium' : 'bad');
-            scoreDiv.textContent = score + '%';
-            container.appendChild(scoreDiv);
-            const label = document.createElement('div');
-            label.className = 'score-label';
-            label.textContent = 'Оценка продавца (навыки)';
-            container.appendChild(label);
+            const wrapper = document.createElement('div');
+            wrapper.className = 'score-wrapper';
+            const cls = score >= 70 ? 'good' : score >= 50 ? 'medium' : 'bad';
+            wrapper.innerHTML = `
+                <div class="score-label">
+                    <span>Оценка продавца (навыки)</span>
+                    <span>${score}%</span>
+                </div>
+                <div class="score-bar">
+                    <div class="score-bar-fill ${cls}" style="width: ${score}%;"></div>
+                </div>
+            `;
+            container.appendChild(wrapper);
         }
 
         // 8. Уровень продавца
@@ -475,219 +486,4 @@ class UIRenderer {
     _renderUpgrade(upgrade) {
         if (!upgrade || typeof upgrade !== 'object') {
             return document.createElement('div');
-        }
-        const container = document.createElement('div');
-        container.className = 'upgrade-box';
-        const title = document.createElement('h3');
-        title.textContent = upgrade.title || 'Хотите больше?';
-        const text = document.createElement('p');
-        text.innerHTML = (upgrade.text || 'Оформите подписку и получите неограниченный доступ.').replace(/\n/g, '<br>');
-        const btn = document.createElement('button');
-        btn.className = 'btn-primary';
-        btn.textContent = upgrade.button || '💎 Получить Pro';
-        btn.addEventListener('click', () => {
-            const url = `https://t.me/${BOT_USERNAME}?start=tariffs`;
-            if (window.Telegram?.WebApp?.openTelegramLink) {
-                window.Telegram.WebApp.openTelegramLink(url);
-            } else {
-                window.open(url, '_blank', 'noopener,noreferrer');
-            }
-        });
-        container.append(title, text, btn);
-        return container;
-    }
-
-    _renderPromoOffer(promo) {
-        if (!promo || typeof promo !== 'object') {
-            return document.createElement('div');
-        }
-        const container = document.createElement('div');
-        container.className = 'upgrade-box';
-        container.style.border = '2px solid #f59e0b';
-        const title = document.createElement('h3');
-        title.textContent = promo.title || '🔥 Первые 100 пользователей — Pro навсегда за 299 ₽';
-        const text = document.createElement('p');
-        text.textContent = promo.text || 'Оставьте email или телефон, чтобы получить доступ';
-        const btn = document.createElement('button');
-        btn.className = 'btn-primary';
-        btn.style.background = '#f59e0b';
-        btn.textContent = promo.button || '💎 Получить Pro за 299 ₽';
-        btn.addEventListener('click', () => {
-            const url = `https://t.me/${BOT_USERNAME}?start=promo`;
-            if (window.Telegram?.WebApp?.openTelegramLink) {
-                window.Telegram.WebApp.openTelegramLink(url);
-            } else {
-                window.open(url, '_blank', 'noopener,noreferrer');
-            }
-        });
-        container.append(title, text, btn);
-        return container;
-    }
-
-    showAchievementToasts(achievements) {
-        const ACHIEVEMENT_TOAST_DURATION = 4500;
-        let index = 0;
-        const showNext = () => {
-            if (index >= achievements.length) return;
-            const ach = achievements[index];
-            const emoji = ach.emoji || '🏆';
-            const name = ach.name || 'Достижение';
-            const desc = ach.desc || '';
-            showAchievementToast(`${emoji} ${name}`, desc);
-            index++;
-            setTimeout(showNext, ACHIEVEMENT_TOAST_DURATION);
-        };
-        showNext();
-    }
-
-    showError(message) {
-        showErrorToast(message);
-    }
-}
-
-// Main
-document.addEventListener('DOMContentLoaded', () => {
-    if (window.Telegram && window.Telegram.WebApp) {
-        try {
-            Telegram.WebApp.ready();
-            Telegram.WebApp.expand();
-            console.log('Telegram WebApp ready and expanded.');
-        } catch (e) {
-            console.warn('Error initializing Telegram WebApp:', e);
-        }
-    } else {
-        console.warn('Telegram WebApp not available (opened in browser?)');
-    }
-
-    const api = new API();
-    const ui = new UIRenderer();
-    let isAnalyzing = false;
-    let abortController = null;
-
-    let initData = '';
-    if (window.Telegram && window.Telegram.WebApp) {
-        try {
-            initData = window.Telegram.WebApp.initData || '';
-            console.log('initData from Telegram.WebApp:', initData ? initData.substring(0, 100) + '...' : 'empty');
-        } catch (e) {
-            console.warn('Error accessing Telegram.WebApp.initData:', e);
-        }
-    }
-    if (!initData) {
-        try {
-            const urlParams = new URLSearchParams(window.location.search);
-            const tgData = urlParams.get('tgWebAppData');
-            if (tgData) {
-                initData = decodeURIComponent(tgData);
-                console.log('initData from URL param tgWebAppData');
-            } else {
-                const customInit = urlParams.get('init_data');
-                if (customInit) {
-                    initData = decodeURIComponent(customInit);
-                    console.log('initData from URL param init_data');
-                }
-            }
-        } catch (e) {
-            console.warn('Error reading URL params:', e);
-        }
-    }
-    if (!initData) {
-        console.error('initData not found. Make sure you opened WebApp from Telegram button.');
-        showErrorToast('Не удалось получить данные авторизации. Откройте приложение через Telegram.');
-    } else {
-        console.log('initData successfully obtained.');
-    }
-
-    ui.analyzeBtn.addEventListener('click', async () => {
-        if (isAnalyzing) {
-            if (abortController) {
-                abortController.abort();
-                abortController = null;
-            }
-            ui.analyzeBtn.textContent = '🔍 Анализировать';
-            ui.analyzeBtn.disabled = false;
-            isAnalyzing = false;
-            return;
-        }
-        const dialog = ui.dialogInput.value.trim();
-        if (!dialog || dialog.length < 2) {
-            showErrorToast('Введите текст диалога (минимум 2 символа)');
-            return;
-        }
-        if (!initData) {
-            showErrorToast('Нет данных авторизации. Откройте приложение через Telegram.');
-            return;
-        }
-        isAnalyzing = true;
-        ui.setLoading(true);
-        ui.analyzeBtn.textContent = '⏹ Отмена';
-        abortController = new AbortController();
-        try {
-            const result = await api.analyze(dialog, initData, abortController);
-            if (result.status === 'queued') {
-                showToast('⏳ Анализ начат! Результат появится через минуту.', 'success');
-                let attempts = 0;
-                const checkStatus = async () => {
-                    try {
-                        const statusData = await api.checkStatus(result.idempotency_key, initData);
-                        if (statusData.status === 'completed' && statusData.result) {
-                            ui.renderResult(statusData.result);
-                            return;
-                        } else if (statusData.status === 'failed') {
-                            showErrorToast(statusData.error || 'Ошибка анализа');
-                            return;
-                        } else {
-                            attempts++;
-                            if (attempts < 20) {
-                                setTimeout(checkStatus, 3000);
-                            } else {
-                                showErrorToast('Анализ выполняется дольше обычного. Проверьте позже.');
-                            }
-                        }
-                    } catch (e) {
-                        showErrorToast('Ошибка проверки статуса');
-                    }
-                };
-                setTimeout(checkStatus, 3000);
-            } else {
-                ui.renderResult(result);
-            }
-        } catch (error) {
-            console.error('Analysis error:', error);
-            if (error.message !== 'Запрос отменён пользователем') {
-                showErrorToast(error.message || 'Ошибка при анализе');
-            }
-        } finally {
-            isAnalyzing = false;
-            abortController = null;
-            ui.setLoading(false);
-            ui.analyzeBtn.textContent = '🔍 Анализировать';
-        }
-    });
-
-    ui.dialogInput.value = '';
-    ui.updateCounters();
-
-    ui.dialogInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            ui.analyzeBtn.click();
-        }
-    });
-
-    if (window.Telegram && window.Telegram.WebApp) {
-        try {
-            const theme = Telegram.WebApp.themeParams;
-            if (theme) {
-                document.documentElement.style.setProperty('--tg-theme-bg-color', theme.bg_color || '#f0f9f6');
-                document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', theme.secondary_bg_color || '#ffffff');
-                document.documentElement.style.setProperty('--tg-theme-text-color', theme.text_color || '#0f2e2a');
-                document.documentElement.style.setProperty('--tg-theme-hint-color', theme.hint_color || '#6b7280');
-                document.documentElement.style.setProperty('--tg-theme-button-color', theme.button_color || '#1a6b5a');
-                document.documentElement.style.setProperty('--tg-theme-button-text-color', theme.button_text_color || '#ffffff');
-            }
-        } catch (e) {
-            console.warn('Error applying theme:', e);
-        }
-    }
-});
+    
