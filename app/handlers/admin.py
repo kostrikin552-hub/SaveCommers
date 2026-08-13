@@ -4,6 +4,7 @@ from typing import Dict, Any
 from ..db import db_fetchall, execute_query
 from ..config import ADMIN_ID
 from ..utils import send_msg, answer_cb
+from ..services.user_service import approve_withdraw, get_withdraw_request
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,23 @@ def handle_admin_callback(update: Dict[str, Any]) -> None:
     if user_id != ADMIN_ID:
         answer_cb(query["id"], bot_token, "Доступ запрещён")
         return
-    if data == "admin_approve_withdraw":
-        answer_cb(query["id"], bot_token, "Вывод одобрен")
+
+    if data.startswith("admin_approve_withdraw_"):
+        try:
+            request_id = int(data.split("_")[-1])
+        except ValueError:
+            answer_cb(query["id"], bot_token, "Неверный ID заявки")
+            return
+        success = approve_withdraw(request_id)
+        if success:
+            answer_cb(query["id"], bot_token, "✅ Вывод подтверждён и средства списаны")
+            # Уведомить пользователя
+            req = get_withdraw_request(request_id)
+            if req:
+                user_id = req['user_id']
+                send_msg(user_id, "✅ Статус вывода: УСПЕШНО✅", bot_token=bot_token)
+        else:
+            answer_cb(query["id"], bot_token, "❌ Ошибка: заявка не найдена или уже обработана")
+        return
     else:
         answer_cb(query["id"], bot_token, "Неизвестная админ-команда")
