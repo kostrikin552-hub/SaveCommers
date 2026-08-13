@@ -1,3 +1,4 @@
+# file: app/handlers/admin.py
 import logging
 from typing import Dict, Any
 from ..db import db_fetchall, execute_query
@@ -11,11 +12,9 @@ def handle_admin_message(update: Dict[str, Any]) -> None:
     chat_id = message.get("chat", {}).get("id")
     user_id = message.get("from", {}).get("id")
     bot_token = update.get("bot_token")
-
     if user_id != ADMIN_ID:
         send_msg(chat_id, "⛔ У вас нет прав администратора.", bot_token=bot_token)
         return
-
     text = message.get("text", "")
     if text.startswith("/admin stats"):
         users = execute_query("SELECT COUNT(*) FROM users", fetch_one=True)
@@ -31,11 +30,9 @@ def handle_admin_callback(update: Dict[str, Any]) -> None:
     chat_id = query.get("message", {}).get("chat", {}).get("id")
     user_id = query.get("from", {}).get("id")
     bot_token = update.get("bot_token")
-
     if user_id != ADMIN_ID:
         answer_cb(query["id"], bot_token, "Доступ запрещён")
         return
-
     if data == "admin_approve_withdraw":
         answer_cb(query["id"], bot_token, "Вывод одобрен")
     else:
