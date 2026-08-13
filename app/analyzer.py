@@ -434,14 +434,7 @@ def analyze_dialog(dialog_text: str) -> dict:
     elif "missing_next_step" in penalty_codes:
         lost_sale_risk = {"level": "medium", "reason": "Клиент не знает, что делать дальше, и сделка потеряла momentum."}
 
-    money_loss = {
-        "level": lost_sale_risk["level"],
-        "title": "Высокий риск потери сделки" if lost_sale_risk["level"] == "high" else "Средний риск потери сделки" if lost_sale_risk["level"] == "medium" else "Низкий риск потери сделки",
-        "reason": lost_sale_risk["reason"],
-        "action": next_best_action
-    }
-
-    # next_best_action
+    # next_best_action - ИНИЦИАЛИЗИРУЕМ ЗНАЧЕНИЕМ ПО УМОЛЧАНИЮ
     next_best_action = None
     if "missing_need" in penalty_codes:
         next_best_action = PENALTY_META["missing_need"]["action"]
@@ -453,6 +446,13 @@ def analyze_dialog(dialog_text: str) -> dict:
         next_best_action = PENALTY_META["missing_next_step"]["action"]
     else:
         next_best_action = "Отлично! Продолжайте в том же духе. Уточните у клиента, какие ещё вопросы у него есть, и подтвердите готовность к сотрудничеству."
+
+    money_loss = {
+        "level": lost_sale_risk["level"],
+        "title": "Высокий риск потери сделки" if lost_sale_risk["level"] == "high" else "Средний риск потери сделки" if lost_sale_risk["level"] == "medium" else "Низкий риск потери сделки",
+        "reason": lost_sale_risk["reason"],
+        "action": next_best_action
+    }
 
     # main_error
     main_error = None
