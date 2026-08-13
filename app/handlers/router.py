@@ -1,3 +1,4 @@
+# file: app/handlers/router.py
 import logging
 from typing import Dict, Any
 from .user import (
@@ -8,7 +9,10 @@ from .user import (
     process_referral_start, handle_referral_message, handle_referral_callback,
     handle_company_message, handle_company_callback
 )
-from .payments import handle_payment_callback, handle_payment_message
+from .payments import (
+    handle_payment_callback, handle_payment_message,
+    handle_pre_checkout_query, handle_successful_payment
+)
 from .admin import handle_admin_callback, handle_admin_message
 from ..config import B2B_ENABLED, BOT_USERNAME, ADMIN_ID
 from ..utils import send_msg, answer_cb
@@ -92,5 +96,9 @@ def process_update(update: Dict[str, Any]) -> None:
                     send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
                 except Exception as e:
                     logger.exception("Error forwarding message to admin")
+    elif "pre_checkout_query" in update:
+        handle_pre_checkout_query(update)
+    elif "successful_payment" in update.get("message", {}):
+        handle_successful_payment(update)
     else:
         logger.warning(f"Unknown update type: {update}")
