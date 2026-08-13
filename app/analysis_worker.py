@@ -1,13 +1,11 @@
+# file: app/analysis_worker.py
 import logging
 import time
 import json
 from .db import get_connection, transaction, execute_query
-from .analyzer import analyze_dialog_with_timeout
-from .services.achievement_service import check_and_award_achievements
-from .services.subscription_service import get_subscription
-from .repositories.analysis_repo import save_analysis_history, get_analysis_count, get_user_usage
-from .repositories.user_repo import get_user
-from .config import ANALYSIS_TIMEOUT, FREE_ANALYSIS_LIMIT, BOT_TOKEN
+from .analyzer import analyze_dialog_with_timeout, TimeoutError
+from .services.sales_service import perform_analysis, rollback_free_analysis
+from .config import BOT_TOKEN
 from .utils import send_msg
 from psycopg2 import extras
 
@@ -15,6 +13,30 @@ logger = logging.getLogger(__name__)
 
 def analysis_worker_loop():
     logger.info("Analysis worker started")
+
+    # Recovery: зависшие задачи
+    try:
+        with get_connection() as conn:
+            with transaction(conn):
+                cur = conn.cursor()
+                cur.execute("UPDATE analysis_queue SET status='pending', started_at=NULL WHERE status='processing' AND started_at < NOW() - INTERVAL '15 minutes'")
+                logger.info("Recovery query executed for stuck analysis tasks")
+    except Exception as e:
+        logger.exception("Recovery query failed")
+
+    # Очистка старых завершённых задач (раз в сутки)
+    try:
+        with get_connection() as conn:
+            with transaction(conn):
+                cur = conn.cursor()
+                cur.execute(
+                    "DELETE FROM analysis_queue WHERE status IN ('completed', 'failed') AND finished_at < NOW() - INTERVAL '30 days'"
+                )
+                if cur.rowcount:
+                    logger.info(f"Cleaned up {cur.rowcount} old analysis_queue entries")
+    except Exception as e:
+        logger.exception("Cleanup query failed")
+
     while True:
         try:
             with get_connection() as conn:
@@ -40,45 +62,8 @@ def analysis_worker_loop():
                 user_id = task['user_id']
                 dialog = task['dialog']
                 idempotency_key = task['idempotency_key']
-                result = analyze_dialog_with_timeout(dialog, timeout_seconds=ANALYSIS_TIMEOUT)
-                positives = '; '.join(result['positives'])[:5000]
-                negatives = '; '.join(result['negatives'])[:5000]
-                save_analysis_history(user_id, result['score'], len(result['positives']), positives, negatives)
 
-                total_analyses = get_analysis_count(user_id)
-                free_used = get_user_usage(user_id)
-                from .services.referral_service import get_referral_stats
-                referrals_count = get_referral_stats(user_id)[0]
-                new_achievements = check_and_award_achievements(user_id, total_analyses, result['score'], referrals_count)
-
-                has_sub = get_subscription(user_id) is not None
-                result['hasSub'] = has_sub
-                if not has_sub:
-                    result['drafts']['expert'] = ""
-
-                response = {
-                    "status": "ok",
-                    "analysis": result,
-                    "achievements": new_achievements
-                }
-                if not has_sub:
-                    response["upgrade"] = {
-                        "title": "Хотите закрывать на 30% больше сделок?",
-                        "text": "Pro — ваш персональный тренер продаж. Проверяйте каждую переписку, получайте экспертные ответы и растите конверсию.",
-                        "button": "🚀 Активировать Pro",
-                        "callback": "tariff_pro"
-                    }
-                    response["limits"] = {
-                        "used": free_used,
-                        "left": max(0, FREE_ANALYSIS_LIMIT - free_used),
-                        "total": FREE_ANALYSIS_LIMIT
-                    }
-                    response["promo_offer"] = {
-                        "title": "🔥 Первые 100 пользователей — Pro навсегда за 299 ₽",
-                        "text": "Оставьте email или телефон, чтобы получить доступ",
-                        "button": "💎 Получить Pro за 299 ₽",
-                        "callback": "tariff_pro_promo"
-                    }
+                response = perform_analysis(user_id, dialog, idempotency_key)
 
                 response_json = json.dumps(response, ensure_ascii=False)
                 execute_query(
@@ -86,15 +71,24 @@ def analysis_worker_loop():
                     (response_json, task['id'])
                 )
 
-                if total_analyses == 1:
-                    send_msg(user_id, "✅ Первый разбор готов!\n\n🔥 Хотите получать такие разборы без ограничений?\nАктивируйте Pro — и проверяйте каждую переписку.\n\n💎 Нажмите «Тарифы» в меню, чтобы узнать подробности.", bot_token=BOT_TOKEN)
+                total_analyses = response.get('total_analyses', 0)
+                if total_analyses == 2:
+                    send_msg(user_id, "✅ Вы сделали второй разбор! Видите закономерности?\n\n🔥 Повторяющиеся ошибки — главный враг продаж. Pro покажет их все и научит закрывать сделки.\n\n💎 Нажмите «Тарифы» в меню, чтобы узнать больше.", bot_token=BOT_TOKEN)
 
+            except TimeoutError as e:
+                logger.warning(f"Analysis timeout for task {task['id']}: {e}")
+                execute_query(
+                    "UPDATE analysis_queue SET status = 'failed', error_message = %s WHERE id = %s",
+                    (f"Timeout: {str(e)}", task['id'])
+                )
+                rollback_free_analysis(task['user_id'], task.get('idempotency_key'))
             except Exception as e:
                 logger.exception("Analysis worker task failed")
                 execute_query(
                     "UPDATE analysis_queue SET status = 'failed', error_message = %s WHERE id = %s",
                     (str(e), task['id'])
                 )
+                rollback_free_analysis(task['user_id'], task.get('idempotency_key'))
         except Exception as e:
             logger.exception("Analysis worker loop error")
             time.sleep(5)
