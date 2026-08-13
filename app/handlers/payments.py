@@ -1,5 +1,6 @@
 # file: app/handlers/payments.py
 import logging
+import os
 from html import escape
 from typing import Dict, Any
 from ..services.commerce_service import create_yookassa_payment
@@ -36,7 +37,14 @@ def handle_payment_callback(update: Dict[str, Any]) -> None:
     data = query.get("data", "")
     chat_id = query.get("message", {}).get("chat", {}).get("id")
     user_id = query.get("from", {}).get("id")
-    bot_token = update.get("bot_token")
+    bot_token = update.get("bot_token") or os.getenv('BOT_TOKEN')
+
+    if not bot_token:
+        logger.error("BOT_TOKEN not found in update and environment")
+        return
+    if not chat_id or not user_id:
+        logger.error(f"Missing chat_id or user_id in callback: chat_id={chat_id}, user_id={user_id}")
+        return
 
     if data == "tariff_pro":
         plan = "pro"
@@ -60,13 +68,18 @@ def handle_payment_callback(update: Dict[str, Any]) -> None:
 
     payment_data, payment_id = create_yookassa_payment(user_id, plan)
     if not payment_data:
-        answer_cb(query["id"], bot_token, "Ошибка создания платежа, попробуйте позже")
+        error_msg = "Ошибка создания платежа, попробуйте позже"
+        logger.error(f"Payment creation failed for user {user_id}, plan {plan}: {payment_id}")
+        answer_cb(query["id"], bot_token, error_msg)
+        send_msg(chat_id, f"❌ {error_msg}", bot_token=bot_token)
         return
     confirmation = payment_data.get("confirmation", {})
     confirmation_url = confirmation.get("confirmation_url")
     if not confirmation_url:
         logger.error("YooKassa payment created without confirmation URL: payment_id=%s", payment_id)
-        answer_cb(query["id"], bot_token, "Ошибка получения ссылки на оплату")
+        error_msg = "Ошибка получения ссылки на оплату"
+        answer_cb(query["id"], bot_token, error_msg)
+        send_msg(chat_id, f"❌ {error_msg}", bot_token=bot_token)
         return
     confirmation_url = escape(confirmation_url, quote=True)
     text = f"💳 <b>Оплата тарифа {escape(PLANS[plan]['name'])}</b>\n\nПерейдите по ссылке для оплаты:\n<a href='{confirmation_url}'>Оплатить</a>\n\nПосле успешной оплаты подписка активируется автоматически."
