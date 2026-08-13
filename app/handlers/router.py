@@ -1,4 +1,3 @@
-# file: app/handlers/router.py
 import logging
 from typing import Dict, Any
 from .user import (
