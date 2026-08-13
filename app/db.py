@@ -307,7 +307,7 @@ def main_menu() -> dict:
 
 def tariffs_kb(user_id: Optional[int] = None) -> dict:
     keyboard = [
-        [{"text": "🚀 Pro (990₽/мес)", "callback_data": "tariff_pro"}],
+        [{"text": "🚀 Pro (299₽/мес)", "callback_data": "tariff_pro"}],
         [{"text": "🏆 Premium (1990₽/мес)", "callback_data": "tariff_premium"}],
         [{"text": "🎁 3 дня Pro бесплатно", "callback_data": "trial"}],
     ]
