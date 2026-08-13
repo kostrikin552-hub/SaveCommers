@@ -258,7 +258,8 @@ def init_db():
             cur.execute("CREATE INDEX IF NOT EXISTS idx_earnings_payment_id ON referral_earnings(payment_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_queue_status ON analysis_queue(status)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_queue_status_created ON analysis_queue(status, created_at)")
-            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS unique_user_promo_success ON payments (user_id, promo_code) WHERE promo_code IS NOT NULL AND status = 'succeeded'")
+            # Удалён индекс на promo_code, так как промокоды больше не используются
+            # cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS unique_user_promo_success ON payments (user_id, promo_code) WHERE promo_code IS NOT NULL AND status = 'succeeded'")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_user_events_user ON user_events(user_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_user_events_event ON user_events(event_name)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_user_events_created ON user_events(created_at)")
