@@ -2,9 +2,10 @@
 import logging
 import time
 from .db import execute_query, acquire_worker_lock, release_worker_lock
-from .services.subscription_service import get_subscription, days_left
+from .services.user_service import days_left
 from .utils import send_msg, send_error_to_admin
 from .config import NOTIFICATION_INTERVAL, ADMIN_ID, BOT_TOKEN
+from .repositories.stats_repo import get_user_progress
 
 logger = logging.getLogger(__name__)
 EXPIRING_DAYS = 3
@@ -37,7 +38,8 @@ def send_followup_reminder():
                  SELECT 1 FROM sent_notifications
                  WHERE user_id = analysis_history.user_id
                    AND notification_type = 'first_analysis_reminder'
-             )""", fetch_all=True
+             )
+           LIMIT 500""", fetch_all=True
     )
     for user in users:
         sent = send_msg(
@@ -59,7 +61,8 @@ def send_no_purchase_reminder():
              AND NOT EXISTS (
                  SELECT 1 FROM sent_notifications sn
                  WHERE sn.user_id = ah.user_id AND sn.notification_type = 'no_purchase_reminder'
-             )""", fetch_all=True
+             )
+           LIMIT 500""", fetch_all=True
     )
     for user in users:
         sent = send_msg(
@@ -69,6 +72,57 @@ def send_no_purchase_reminder():
         )
         if sent:
             _mark_notification_sent(user['user_id'], 'no_purchase_reminder', str(user['user_id']))
+
+def send_return_reminder():
+    users = execute_query(
+        """SELECT DISTINCT user_id FROM analysis_history
+           WHERE created_at > NOW() - INTERVAL '2 days'
+             AND created_at < NOW() - INTERVAL '1 day'
+             AND NOT EXISTS (
+                 SELECT 1 FROM sent_notifications
+                 WHERE user_id = analysis_history.user_id
+                   AND notification_type = 'return_reminder_24h'
+             )
+           LIMIT 500""", fetch_all=True
+    )
+    for user in users:
+        sent = send_msg(
+            user['user_id'],
+            "👋 Вы анализировали диалог вчера. Хотите проверить новый разговор? Отправьте переписку и сравните результат!",
+            bot_token=BOT_TOKEN
+        )
+        if sent:
+            _mark_notification_sent(user['user_id'], 'return_reminder_24h', str(user['user_id']))
+
+def send_weekly_progress():
+    users = execute_query(
+        """SELECT DISTINCT ah.user_id FROM analysis_history ah
+           WHERE ah.created_at > NOW() - INTERVAL '8 days'
+             AND ah.created_at < NOW() - INTERVAL '6 days'
+             AND NOT EXISTS (
+                 SELECT 1 FROM sent_notifications
+                 WHERE user_id = ah.user_id
+                   AND notification_type = 'weekly_progress'
+             )
+             AND (SELECT COUNT(*) FROM analysis_history WHERE user_id = ah.user_id) >= 2
+           LIMIT 500""", fetch_all=True
+    )
+    for user in users:
+        progress = get_user_progress(user['user_id'])
+        if progress['change'] != 0:
+            text = (
+                f"📈 Ваш прогресс за неделю:\n"
+                f"Первый анализ: {progress['first_score']}/100\n"
+                f"Последний: {progress['last_score']}/100\n"
+                f"Изменение: {'+' if progress['change'] > 0 else ''}{progress['change']} баллов\n"
+                f"Главная зона роста: {progress['improvement_area'] or 'продолжайте в том же духе'}\n\n"
+                "Продолжить развитие? Отправьте новый диалог!"
+            )
+        else:
+            text = "📊 Ваш прогресс стабилен. Попробуйте новый подход и посмотрите результат!"
+        sent = send_msg(user['user_id'], text, bot_token=BOT_TOKEN)
+        if sent:
+            _mark_notification_sent(user['user_id'], 'weekly_progress', str(user['user_id']))
 
 def send_trial_expiring_notification(user_id: int) -> bool:
     analyses = execute_query("SELECT COUNT(*), AVG(score) FROM analysis_history WHERE user_id = %s", (user_id,), fetch_one=True)
@@ -92,6 +146,8 @@ def notification_loop():
         try:
             send_followup_reminder()
             send_no_purchase_reminder()
+            send_return_reminder()
+            send_weekly_progress()
 
             expiring = execute_query(
                 "SELECT * FROM subscriptions WHERE is_active = TRUE AND end_date > NOW() AND end_date <= NOW() + (%s * INTERVAL '1 day') ORDER BY end_date",
