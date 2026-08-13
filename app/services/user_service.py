@@ -77,14 +77,35 @@ def days_left(user_id: int) -> int:
     sub = get_subscription(user_id)
     if not sub:
         return 0
-    delta = sub['end_date'] - datetime.now(timezone.utc)
+    end_date = sub['end_date']
+    # Если end_date пришла как строка (например, из БД в виде ISO), преобразуем в datetime
+    if isinstance(end_date, str):
+        try:
+            # Пробуем парсить ISO-формат с возможным 'Z'
+            end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        except ValueError:
+            # Если не получилось, пробуем без timezone и добавим UTC
+            end_date = datetime.fromisoformat(end_date)
+            end_date = end_date.replace(tzinfo=timezone.utc)
+    elif end_date.tzinfo is None:
+        end_date = end_date.replace(tzinfo=timezone.utc)
+    delta = end_date - datetime.now(timezone.utc)
     return max(0, int(delta.total_seconds() // 86400))
 
 def get_trial_days_left(user_id: int) -> int:
     sub = get_subscription(user_id)
     if not sub or sub['plan_type'] != 'trial':
         return 0
-    delta = sub['end_date'] - datetime.now(timezone.utc)
+    end_date = sub['end_date']
+    if isinstance(end_date, str):
+        try:
+            end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        except ValueError:
+            end_date = datetime.fromisoformat(end_date)
+            end_date = end_date.replace(tzinfo=timezone.utc)
+    elif end_date.tzinfo is None:
+        end_date = end_date.replace(tzinfo=timezone.utc)
+    delta = end_date - datetime.now(timezone.utc)
     return max(0, int(delta.total_seconds() // 86400))
 
 def activate_trial(user_id: int) -> bool:
