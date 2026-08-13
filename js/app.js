@@ -152,6 +152,7 @@ class UIRenderer {
                 ${typeof analysis !== 'string' ? `<p style="font-size:12px;color:#666;word-break:break-all;">${JSON.stringify(analysis)}</p>` : ''}
             `;
             container.appendChild(errorDiv);
+            this._scrollToResults();
             return;
         }
 
@@ -481,6 +482,18 @@ class UIRenderer {
             document.getElementById('step-upload').scrollIntoView({ behavior: 'smooth' });
         });
         container.appendChild(newAnalysisBtn);
+
+        // Прокрутка к результатам с небольшой задержкой для рендеринга
+        this._scrollToResults();
+    }
+
+    _scrollToResults() {
+        setTimeout(() => {
+            const container = this.resultContainer;
+            if (container && !container.hidden) {
+                container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 150);
     }
 
     _renderUpgrade(upgrade) {
