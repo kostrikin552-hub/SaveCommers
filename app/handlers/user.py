@@ -7,7 +7,8 @@ from ..repositories.core_repo import upsert_user
 from ..services.user_service import (
     get_subscription, has_active_subscription, get_referral_code, get_referral_stats,
     get_balance, get_referral_status, award_expert_bonus, process_referral_start as referral_start,
-    get_referral_code as get_ref_code
+    get_referral_code as get_ref_code,
+    create_withdraw_request
 )
 from ..repositories.stats_repo import (
     get_analysis_history, get_user_weaknesses, get_user_usage, get_analysis_count,
@@ -16,7 +17,7 @@ from ..repositories.stats_repo import (
 from ..utils import send_msg, answer_cb
 from ..utils.analytics import log_event
 from ..db import main_menu, execute_query, generate_signed_url, set_state, get_state_data, clear_state, create_company, db_fetchone, db_fetchall
-from ..config import SECRET_KEY, WEBAPP_URL, BACKEND_URL, BOT_USERNAME, MAX_DIALOG_LENGTH, B2B_ENABLED, FREE_ANALYSIS_LIMIT
+from ..config import SECRET_KEY, WEBAPP_URL, BACKEND_URL, BOT_USERNAME, MAX_DIALOG_LENGTH, B2B_ENABLED, FREE_ANALYSIS_LIMIT, ADMIN_ID
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +191,6 @@ def handle_contact_input(update: Dict[str, Any]) -> None:
     else:
         execute_query("INSERT INTO user_contacts (user_id, phone) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET phone = %s", (user_id, text, text))
     clear_state(user_id)
-    # Удалена ссылка с PROMO_CODE
     send_msg(chat_id, "✅ Контакт сохранён!", bot_token=bot_token)
 
 # ==================== SUPPORT ====================
@@ -235,9 +235,10 @@ def handle_referral_message(update: Dict[str, Any]) -> None:
     bot_token = update.get("bot_token")
     code = get_ref_code(user_id)
     ref_count, bonus = get_referral_stats(user_id)
-    balance = get_balance(user_id)
+    balance = get_balance(user_id)  # в копейках
     status = get_referral_status(user_id)
     status_text = "🏆 Эксперт" if status["is_expert"] else f"🟡 До эксперта осталось {status['next_level']} приглашений"
+    
     text = (
         f"💰 <b>Мой баланс</b>\n\n"
         f"Ваш код: <code>{escape(code)}</code>\n"
@@ -245,10 +246,117 @@ def handle_referral_message(update: Dict[str, Any]) -> None:
         f"Заработано бонусов: {bonus / 100:.2f} ₽\n"
         f"Баланс для вывода: {balance / 100:.2f} ₽\n"
         f"Статус: {status_text}\n\n"
-        "Пригласи друзей — получи статус эксперта и бесплатный Pro на месяц!\n"
-        "⚠️ Вывод средств временно отключён."
+        "Пригласи друзей — получи статус эксперта и бесплатный Pro на месяц!"
     )
-    send_msg(chat_id, text, bot_token=bot_token)
+    
+    kb = None
+    if balance >= 50000:  # 500 руб
+        kb = {"inline_keyboard": [[{"text": "💸 Вывести средства", "callback_data": "withdraw_start"}]]}
+    
+    send_msg(chat_id, text, bot_token=bot_token, kb=kb)
+
+def handle_withdraw_callback(update: Dict[str, Any]) -> None:
+    query = update["callback_query"]
+    data = query.get("data", "")
+    chat_id = query.get("message", {}).get("chat", {}).get("id")
+    user_id = query.get("from", {}).get("id")
+    bot_token = update.get("bot_token")
+
+    if data == "withdraw_start":
+        balance = get_balance(user_id)
+        if balance < 50000:
+            answer_cb(query["id"], bot_token, "❌ Для вывода необходимо накопить минимум 500 ₽")
+            return
+        set_state(user_id, "awaiting_withdraw_method", {})
+        answer_cb(query["id"], bot_token, "Введите номер телефона или карты для вывода:")
+        return
+
+    state = get_state_data(user_id)
+    if not state or not state.get("type", "").startswith("awaiting_withdraw"):
+        answer_cb(query["id"], bot_token, "Неизвестная команда")
+        return
+
+    # Обработка шагов ввода
+    if state.get("type") == "awaiting_withdraw_method":
+        method = data  # данные приходят в callback? Нет, callback не несёт текста, только кнопки. Лучше использовать message.
+        # На самом деле мы не можем получить текст через callback, нужно использовать сообщение.
+        # Поэтому переделаем: при нажатии "withdraw_start" мы установим состояние и отправим сообщение с просьбой ввести номер.
+        # Затем пользователь вводит текст, и мы обрабатываем его в handle_message, а не в callback.
+        pass
+
+def handle_withdraw_input(update: Dict[str, Any]) -> None:
+    """Обработка текстовых сообщений для ввода данных вывода."""
+    message = update.get("message", {})
+    user_id = message.get("from", {}).get("id")
+    chat_id = message.get("chat", {}).get("id")
+    text = message.get("text", "").strip()
+    bot_token = update.get("bot_token")
+
+    state = get_state_data(user_id)
+    if not state:
+        return
+    step = state.get("type")
+    if not step or not step.startswith("awaiting_withdraw"):
+        return
+
+    if step == "awaiting_withdraw_method":
+        # Сохраняем метод (номер телефона/карты)
+        state["method"] = text
+        state["type"] = "awaiting_withdraw_bank"
+        set_state(user_id, state["type"], {"method": text})
+        send_msg(chat_id, "Введите название банка:", bot_token=bot_token)
+    elif step == "awaiting_withdraw_bank":
+        state["bank"] = text
+        state["type"] = "awaiting_withdraw_amount"
+        set_state(user_id, state["type"], {"method": state["method"], "bank": text})
+        send_msg(chat_id, "Введите сумму для вывода (в рублях, целое число):", bot_token=bot_token)
+    elif step == "awaiting_withdraw_amount":
+        try:
+            amount_rub = int(text)
+            if amount_rub < 500:
+                send_msg(chat_id, "❌ Минимальная сумма вывода 500 ₽. Попробуйте снова:", bot_token=bot_token)
+                return
+            balance = get_balance(user_id)
+            if amount_rub * 100 > balance:
+                send_msg(chat_id, f"❌ Недостаточно средств. Ваш баланс: {balance/100:.2f} ₽. Введите меньшую сумму:", bot_token=bot_token)
+                return
+            state["amount"] = amount_rub
+            state["type"] = "awaiting_withdraw_fullname"
+            set_state(user_id, state["type"], {"method": state["method"], "bank": state["bank"], "amount": amount_rub})
+            send_msg(chat_id, "Введите ваше полное ФИО:", bot_token=bot_token)
+        except ValueError:
+            send_msg(chat_id, "❌ Введите целое число (рубли). Попробуйте снова:", bot_token=bot_token)
+    elif step == "awaiting_withdraw_fullname":
+        full_name = text
+        method = state.get("method")
+        bank = state.get("bank")
+        amount_rub = state.get("amount")
+        if not all([method, bank, amount_rub]):
+            clear_state(user_id)
+            send_msg(chat_id, "❌ Ошибка: не все данные введены. Начните заново.", bot_token=bot_token)
+            return
+        # Создаём заявку
+        request_id = create_withdraw_request(user_id, amount_rub, method, method, bank, full_name)
+        if request_id is None:
+            send_msg(chat_id, "❌ Не удалось создать заявку на вывод. Проверьте баланс или попробуйте позже.", bot_token=bot_token)
+            clear_state(user_id)
+            return
+        clear_state(user_id)
+        # Отправляем подтверждение пользователю
+        send_msg(chat_id, f"✅ Заявка на вывод {amount_rub} ₽ создана. Ожидайте подтверждения администратором.", bot_token=bot_token)
+        
+        # Отправляем уведомление администратору
+        admin_text = (
+            f"💰 <b>Новая заявка на вывод</b>\n"
+            f"Пользователь: {user_id}\n"
+            f"Сумма: {amount_rub} ₽\n"
+            f"Метод: {method}\n"
+            f"Банк: {bank}\n"
+            f"ФИО: {full_name}\n"
+            f"ID заявки: {request_id}"
+        )
+        admin_kb = {"inline_keyboard": [[{"text": "✅ Подтвердить вывод", "callback_data": f"admin_approve_withdraw_{request_id}"}]]}
+        send_msg(ADMIN_ID, admin_text, bot_token=bot_token, kb=admin_kb)
 
 def handle_referral_callback(update: Dict[str, Any]) -> None:
     query = update["callback_query"]
