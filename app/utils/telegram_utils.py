@@ -6,7 +6,8 @@ import hmac
 import hashlib
 import requests
 import logging
-from typing import Optional
+from typing import Optional, List, Dict
+
 from ..config import BOT_TOKEN, BASE_URL, TELEGRAM_SECRET_TOKEN
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,47 @@ def answer_cb(callback_id: str, bot_token: str = None, text: str = None, show_al
         return resp.status_code == 200
     except Exception as e:
         logger.exception(f"Failed to answer callback {callback_id}: {e}")
+        return False
+
+def send_invoice(
+    chat_id: int,
+    title: str,
+    description: str,
+    payload: str,
+    provider_token: str,
+    currency: str,
+    prices: List[Dict[str, int]],
+    start_parameter: str = "saleflow_payment",
+    bot_token: str = None
+) -> bool:
+    """Отправляет счёт на оплату (нативные платежи Telegram)."""
+    token = bot_token or BOT_TOKEN
+    url = f"https://api.telegram.org/bot{token}/sendInvoice"
+    payload_data = {
+        "chat_id": chat_id,
+        "title": title,
+        "description": description,
+        "payload": payload,
+        "provider_token": provider_token,
+        "currency": currency,
+        "prices": prices,
+        "start_parameter": start_parameter,
+    }
+    try:
+        resp = requests.post(url, json=payload_data, timeout=15)
+        if resp.status_code == 200:
+            result = resp.json()
+            if result.get("ok"):
+                logger.info(f"Invoice sent to {chat_id}, payload: {payload}")
+                return True
+            else:
+                logger.error(f"Telegram sendInvoice error: {result}")
+                return False
+        else:
+            logger.error(f"Telegram sendInvoice HTTP error: {resp.status_code} {resp.text}")
+            return False
+    except Exception as e:
+        logger.exception(f"Failed to send invoice to {chat_id}: {e}")
         return False
 
 # ==================== ПРОВЕРКА INIT_DATA ====================
@@ -125,7 +167,7 @@ def set_telegram_webhook() -> bool:
     payload = {
         "url": webhook_url,
         "secret_token": TELEGRAM_SECRET_TOKEN,
-        "allowed_updates": ["message", "callback_query"]
+        "allowed_updates": ["message", "callback_query", "pre_checkout_query"]
     }
     try:
         resp = requests.post(url, json=payload, timeout=10)
