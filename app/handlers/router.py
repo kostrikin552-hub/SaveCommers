@@ -7,7 +7,8 @@ from .user import (
     handle_contact_callback, handle_contact_input,
     handle_support_message, handle_support_callback,
     process_referral_start, handle_referral_message, handle_referral_callback,
-    handle_company_message, handle_company_callback
+    handle_company_message, handle_company_callback,
+    handle_withdraw_callback, handle_withdraw_input
 )
 from .payments import (
     handle_payment_callback, handle_payment_message,
@@ -16,6 +17,7 @@ from .payments import (
 from .admin import handle_admin_callback, handle_admin_message
 from ..config import B2B_ENABLED, BOT_USERNAME, ADMIN_ID
 from ..utils import send_msg, answer_cb
+from ..db import get_state_data
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,8 @@ def process_update(update: Dict[str, Any]) -> None:
             handle_analysis_callback(update)
         elif data.startswith("contact_"):
             handle_contact_callback(update)
+        elif data.startswith("withdraw_"):
+            handle_withdraw_callback(update)
         else:
             logger.warning(f"Unknown callback data: {data}")
             answer_cb(query["id"], update.get("bot_token"), "Неизвестная команда")
@@ -60,6 +64,11 @@ def process_update(update: Dict[str, Any]) -> None:
         elif text.startswith("/support"):
             handle_support_message(update)
         else:
+            # Проверяем, не находится ли пользователь в процессе ввода данных для вывода
+            state = get_state_data(user_id)
+            if state and state.get("type", "").startswith("awaiting_withdraw"):
+                handle_withdraw_input(update)
+                return
             if text.lower() in ["🚀 новый разбор сделки", "новый разбор сделки", "🚀 проверить переписку", "проверить переписку"]:
                 handle_analysis_message(update)
             elif text.lower() in ["💎 pro доступ", "pro доступ", "💎 тарифы"]:
@@ -78,7 +87,7 @@ def process_update(update: Dict[str, Any]) -> None:
                 handle_analysis_message(update)
             elif text.lower() == "📈 мой рост":
                 handle_progress(update)
-            elif text.lower() == "👥 пригласить команду":
+            elif text.lower() in ["👥 пригласить команду", "👥 пригласить друга"]:
                 from ..services.user_service import get_referral_code
                 code = get_referral_code(user_id)
                 ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{code}"
