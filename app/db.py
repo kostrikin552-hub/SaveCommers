@@ -258,14 +258,32 @@ def init_db():
             cur.execute("CREATE INDEX IF NOT EXISTS idx_earnings_payment_id ON referral_earnings(payment_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_queue_status ON analysis_queue(status)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_queue_status_created ON analysis_queue(status, created_at)")
-            # Удалён индекс на promo_code, так как промокоды больше не используются
-            # cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS unique_user_promo_success ON payments (user_id, promo_code) WHERE promo_code IS NOT NULL AND status = 'succeeded'")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_user_events_user ON user_events(user_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_user_events_event ON user_events(event_name)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_user_events_created ON user_events(created_at)")
 
+            # === МИГРАЦИИ: добавление колонок, которых может не быть в существующей таблице ===
+            # Проверяем наличие колонки sales_health_score в analysis_history
+            cur.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='analysis_history' AND column_name='sales_health_score'
+            """)
+            if not cur.fetchone():
+                logger.info("Adding column sales_health_score to analysis_history")
+                cur.execute("ALTER TABLE analysis_history ADD COLUMN sales_health_score INTEGER")
+
+            # Аналогично для других колонок, которые могли отсутствовать в старых версиях
+            for col in ['lost_sale_risk_level', 'deal_stage', 'seller_level', 'main_strength', 'improvement_area']:
+                cur.execute("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name='analysis_history' AND column_name=%s
+                """, (col,))
+                if not cur.fetchone():
+                    logger.info(f"Adding column {col} to analysis_history")
+                    cur.execute(f"ALTER TABLE analysis_history ADD COLUMN {col} TEXT")
+
             conn.commit()
-            logger.info("Database initialized")
+            logger.info("Database initialized and migrations applied")
 
 
 def acquire_worker_lock(lock_name: str, ttl_seconds: int = 300) -> bool:
@@ -302,7 +320,7 @@ def main_menu() -> dict:
         ],
         "resize_keyboard": True,
         "one_time_keyboard": False
-            }
+    }
 
 
 def tariffs_kb(user_id: Optional[int] = None) -> dict:
