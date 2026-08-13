@@ -16,7 +16,7 @@ from ..repositories.stats_repo import (
 from ..utils import send_msg, answer_cb
 from ..utils.analytics import log_event
 from ..db import main_menu, execute_query, generate_signed_url, set_state, get_state_data, clear_state, create_company, db_fetchone, db_fetchall
-from ..config import SECRET_KEY, WEBAPP_URL, BACKEND_URL, BOT_USERNAME, PROMO_CODE, MAX_DIALOG_LENGTH, B2B_ENABLED, FREE_ANALYSIS_LIMIT
+from ..config import SECRET_KEY, WEBAPP_URL, BACKEND_URL, BOT_USERNAME, MAX_DIALOG_LENGTH, B2B_ENABLED, FREE_ANALYSIS_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +190,8 @@ def handle_contact_input(update: Dict[str, Any]) -> None:
     else:
         execute_query("INSERT INTO user_contacts (user_id, phone) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET phone = %s", (user_id, text, text))
     clear_state(user_id)
-    send_msg(chat_id, f"✅ Контакт сохранён! Ссылка на оплату Pro за 299 ₽: /pay_{PROMO_CODE}_{user_id}", bot_token=bot_token)
+    # Удалена ссылка с PROMO_CODE
+    send_msg(chat_id, "✅ Контакт сохранён!", bot_token=bot_token)
 
 # ==================== SUPPORT ====================
 
