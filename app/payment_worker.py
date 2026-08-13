@@ -1,149 +1,69 @@
-# file: app/payment_worker.py
+# file: app/handlers/payments.py
 import logging
-import time
-import requests
-from .db import execute_query, get_connection, transaction, acquire_worker_lock, release_worker_lock
-from .config import (
-    YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, BASE_URL,
-    PAYMENT_CHECK_INTERVAL, PROCESSING_TIMEOUT_MINUTES, PAYMENT_MAX_AGE_DAYS
-)
-from .services.commerce_service import process_successful_payment, get_yookassa_payment_info
-from .repositories.commerce_repo import set_payment_failed
+from html import escape
+from typing import Dict, Any
+from ..services.commerce_service import create_yookassa_payment
+from ..services.user_service import get_trial_days_left, activate_trial
+from ..db import tariffs_kb
+from ..config import PLANS, FREE_ANALYSIS_LIMIT
+from ..utils import send_msg, answer_cb
+from ..utils.analytics import log_event
 
 logger = logging.getLogger(__name__)
 
-def recover_creating_payment(payment: dict) -> bool:
-    idempotence_key = payment['idempotence_key']
-    user_id = payment['user_id']
-    plan = payment['plan_type']
-    amount = payment['amount']
-    promo_code = payment.get('promo_code')
+def handle_payment_message(update: Dict[str, Any]) -> None:
+    chat_id = update["message"]["chat"]["id"]
+    user_id = update["message"]["from"]["id"]
+    bot_token = update.get("bot_token")
+    log_event(user_id, 'paywall_shown')
+    text = (
+        "💎 <b>Твой план роста:</b>\n\n"
+        "🎁 <b>Бесплатный</b> -- 3 дня / 5 анализов\n Узнай свои слабые места.\n\n"
+        "🚀 <b>Pro</b> -- 990₽/мес\n Перестань терять клиентов из-за ошибок в переписке.\n ✓ Безлимитный анализ\n ✓ Экспертные ответы\n ✓ История всех разборов\n ✓ Твой профиль слабых мест\n"
+        "🔥 <b>Первые 100 пользователей получают Pro за 299 ₽</b>\n\n"
+        "🏆 <b>Premium</b> -- 1990₽/мес\n Всё из Pro + персональная стратегия продаж.\n\n"
+        "🎁 <b>3 дня Pro бесплатно</b> — попробуй прямо сейчас"
+    )
+    send_msg(chat_id, text, bot_token=bot_token, kb=tariffs_kb(user_id))
 
-    url = 'https://api.yookassa.ru/v3/payments'
-    auth = (YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
-    metadata = {'user_id': user_id, 'plan_type': plan}
-    if promo_code:
-        metadata['promo_code'] = promo_code
+def handle_payment_callback(update: Dict[str, Any]) -> None:
+    query = update["callback_query"]
+    data = query.get("data", "")
+    chat_id = query.get("message", {}).get("chat", {}).get("id")
+    user_id = query.get("from", {}).get("id")
+    bot_token = update.get("bot_token")
 
-    try:
-        resp = requests.post(
-            url,
-            json={
-                'amount': {'value': f'{amount/100:.2f}', 'currency': 'RUB'},
-                'confirmation': {'type': 'redirect', 'return_url': BASE_URL + '/payment-success'},
-                'capture': True,
-                'description': f'SaleFlow {plan}',
-                'metadata': metadata
-            },
-            auth=auth,
-            headers={'Idempotence-Key': idempotence_key, 'Content-Type': 'application/json'},
-            timeout=10
-        )
-        if resp.status_code == 409:
-            data = resp.json()
-            existing_id = data.get('id')
-            if existing_id:
-                execute_query(
-                    "UPDATE payments SET payment_id = %s, status = 'pending' WHERE idempotence_key = %s AND status = 'creating'",
-                    (existing_id, idempotence_key)
-                )
-                logger.info(f"Recovered creating payment: {existing_id} for user {user_id}")
-                return True
-        elif resp.status_code in (200, 201):
-            data = resp.json()
-            new_id = data.get('id')
-            execute_query(
-                "UPDATE payments SET payment_id = %s, status = 'pending' WHERE idempotence_key = %s AND status = 'creating'",
-                (new_id, idempotence_key)
-            )
-            logger.info(f"Re-created payment: {new_id} for user {user_id}")
-            return True
+    if data == "tariff_pro":
+        plan = "pro"
+    elif data == "tariff_premium":
+        plan = "premium"
+    elif data == "tariff_b2b":
+        answer_cb(query["id"], bot_token, "B2B временно недоступен")
+        return
+    elif data == "trial":
+        success = activate_trial(user_id)
+        if success:
+            remaining = get_trial_days_left(user_id)
+            answer_cb(query["id"], bot_token, "🎉 Пробный период активирован на 3 дня!")
+            send_msg(chat_id, f"🎉 Пробный период активирован!\nОсталось: {remaining} дней и {FREE_ANALYSIS_LIMIT} бесплатных анализов.", bot_token=bot_token)
         else:
-            logger.warning(f"Could not recover creating payment {idempotence_key}: {resp.status_code} {resp.text}")
-    except Exception as e:
-        logger.exception(f"Error recovering creating payment: {e}")
-    return False
+            answer_cb(query["id"], bot_token, "❌ Пробный период недоступен (уже использован или есть активная подписка)")
+        return
+    else:
+        answer_cb(query["id"], bot_token, "Неизвестный тариф")
+        return
 
-def check_pending_payments_loop():
-    lock_name = "payment_worker"
-    while True:
-        if not acquire_worker_lock(lock_name, ttl_seconds=PAYMENT_CHECK_INTERVAL + 60):
-            time.sleep(PAYMENT_CHECK_INTERVAL)
-            continue
-        try:
-            logger.debug("Payment worker acquired lock")
-
-            recovered = execute_query(
-                """UPDATE payments
-                   SET status = 'pending', processing_started_at = NULL
-                   WHERE status = 'processing'
-                     AND processing_started_at < NOW() - (%s * INTERVAL '1 minute')""",
-                (PROCESSING_TIMEOUT_MINUTES,)
-            )
-            if recovered:
-                logger.info(f"Recovered {recovered} stuck processing payments")
-
-            stuck_creating = execute_query(
-                "SELECT * FROM payments WHERE status = 'creating' AND created_at < NOW() - INTERVAL '15 minutes'",
-                fetch_all=True
-            )
-            for payment in stuck_creating:
-                if not recover_creating_payment(payment):
-                    execute_query(
-                        "UPDATE payments SET status = 'failed' WHERE idempotence_key = %s AND status = 'creating'",
-                        (payment['idempotence_key'],)
-                    )
-
-            pending = execute_query(
-                """SELECT * FROM payments
-                   WHERE status = 'pending'
-                     AND created_at > NOW() - (%s * INTERVAL '1 day')
-                   LIMIT 5""",
-                (PAYMENT_MAX_AGE_DAYS,),
-                fetch_all=True
-            )
-            for payment in pending:
-                yookassa_payment_id = payment['payment_id']
-                try:
-                    with get_connection() as conn:
-                        with transaction(conn):
-                            cur = conn.cursor()
-                            cur.execute(
-                                "SELECT status FROM payments WHERE payment_id = %s FOR UPDATE",
-                                (yookassa_payment_id,)
-                            )
-                            row = cur.fetchone()
-                            if not row:
-                                continue
-                            status = row[0]
-                            if status != 'pending':
-                                continue
-                            cur.execute(
-                                "UPDATE payments SET status = 'processing' WHERE payment_id = %s",
-                                (yookassa_payment_id,)
-                            )
-
-                    yookassa_data = get_yookassa_payment_info(yookassa_payment_id)
-                    if not yookassa_data:
-                        execute_query(
-                            "UPDATE payments SET status = 'pending' WHERE payment_id = %s",
-                            (yookassa_payment_id,)
-                        )
-                        continue
-                    status_yookassa = yookassa_data.get('status')
-                    if status_yookassa == "succeeded":
-                        process_successful_payment(yookassa_payment_id)
-                    elif status_yookassa in ("canceled", "expired"):
-                        set_payment_failed(yookassa_payment_id)
-                except Exception as e:
-                    logger.exception(f"Error processing payment {yookassa_payment_id} in worker: {e}")
-                    execute_query(
-                        "UPDATE payments SET status = 'pending' WHERE payment_id = %s",
-                        (yookassa_payment_id,)
-                    )
-
-        except Exception as e:
-            logger.exception("Payment worker error")
-        finally:
-            release_worker_lock(lock_name)
-        time.sleep(PAYMENT_CHECK_INTERVAL)
+    payment_data, payment_id = create_yookassa_payment(user_id, plan)
+    if not payment_data:
+        answer_cb(query["id"], bot_token, "Ошибка создания платежа, попробуйте позже")
+        return
+    confirmation = payment_data.get("confirmation", {})
+    confirmation_url = confirmation.get("confirmation_url")
+    if not confirmation_url:
+        logger.error("YooKassa payment created without confirmation URL: payment_id=%s", payment_id)
+        answer_cb(query["id"], bot_token, "Ошибка получения ссылки на оплату")
+        return
+    confirmation_url = escape(confirmation_url, quote=True)
+    text = f"💳 <b>Оплата тарифа {escape(PLANS[plan]['name'])}</b>\n\nПерейдите по ссылке для оплаты:\n<a href='{confirmation_url}'>Оплатить</a>\n\nПосле успешной оплаты подписка активируется автоматически."
+    send_msg(chat_id, text, bot_token=bot_token, disable_preview=False)
+    answer_cb(query["id"], bot_token, "Ссылка на оплату отправлена")
