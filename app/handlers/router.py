@@ -17,9 +17,26 @@ from .payments import (
 from .admin import handle_admin_callback, handle_admin_message
 from ..config import B2B_ENABLED, BOT_USERNAME, ADMIN_ID
 from ..utils import send_msg, answer_cb
-from ..db import get_state_data
+from ..db import get_state_data, clear_state
 
 logger = logging.getLogger(__name__)
+
+# Словарь команд главного меню (текст -> обработчик)
+MENU_COMMANDS = {
+    "🚀 новый разбор сделки": handle_analysis_message,
+    "новый разбор сделки": handle_analysis_message,
+    "🚀 проверить переписку": handle_analysis_message,
+    "проверить переписку": handle_analysis_message,
+    "💎 pro доступ": handle_payment_message,
+    "pro доступ": handle_payment_message,
+    "💎 тарифы": handle_payment_message,
+    "👥 b2b": handle_company_message,
+    "b2b": handle_company_message,
+    "💰 мой баланс": handle_referral_message,
+    "баланс": handle_referral_message,
+    "❓ помощь": handle_support_message,
+    "📈 мой рост": handle_progress,
+}
 
 def process_update(update: Dict[str, Any]) -> None:
     if "callback_query" in update:
@@ -57,54 +74,65 @@ def process_update(update: Dict[str, Any]) -> None:
         chat_id = message.get("chat", {}).get("id")
         user_id = message.get("from", {}).get("id")
         bot_token = update.get("bot_token")
+
+        # Обработка команд /start, /admin, /support
         if text.startswith("/start"):
             handle_start(update)
+            return
         elif text.startswith("/admin"):
             handle_admin_message(update)
+            return
         elif text.startswith("/support"):
             handle_support_message(update)
-        else:
-            # Проверяем, не находится ли пользователь в процессе ввода данных для вывода
-            state = get_state_data(user_id)
-            if state and state.get("type", "").startswith("awaiting_withdraw"):
-                handle_withdraw_input(update)
+            return
+
+        # Очищаем состояние, если получена команда из меню
+        # Это предотвращает зависание в состоянии вывода, если пользователь нажал другую кнопку
+        # Проверяем команды из MENU_COMMANDS
+        lower_text = text.lower()
+        for cmd, handler in MENU_COMMANDS.items():
+            if lower_text == cmd.lower():
+                # Если есть состояние вывода, сбрасываем его
+                state = get_state_data(user_id)
+                if state and state.get("type", "").startswith("awaiting_withdraw"):
+                    clear_state(user_id)
+                # Вызываем обработчик
+                handler(update)
                 return
-            if text.lower() in ["🚀 новый разбор сделки", "новый разбор сделки", "🚀 проверить переписку", "проверить переписку"]:
-                handle_analysis_message(update)
-            elif text.lower() in ["💎 pro доступ", "pro доступ", "💎 тарифы"]:
-                handle_payment_message(update)
-            elif text.lower() in ["👥 b2b", "b2b"]:
-                if B2B_ENABLED:
-                    handle_company_message(update)
-                else:
-                    send_msg(chat_id, "B2B временно недоступен", bot_token=bot_token)
-            elif text.lower() in ["💰 мой баланс", "баланс"]:
-                handle_referral_message(update)
-            elif text.lower() in ["❓ помощь"]:
-                handle_support_message(update)
-            elif text.lower() == "🎬 посмотреть пример анализа":
-                update["message"]["text"] = "Клиент: Здравствуйте! Мне нужна консультация.\nВы: Добрый день! Чем могу помочь?\nКлиент: Хочу понять, как повысить продажи.\nВы: Отличная задача! Давайте обсудим вашу текущую стратегию."
-                handle_analysis_message(update)
-            elif text.lower() == "📈 мой рост":
-                handle_progress(update)
-            elif text.lower() in ["👥 пригласить команду", "👥 пригласить друга"]:
-                from ..services.user_service import get_referral_code
-                code = get_referral_code(user_id)
-                ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{code}"
-                send_msg(chat_id, f"👥 <b>Пригласить команду</b>\n\nТвоя реферальная ссылка:\n<code>{ref_link}</code>\n\nЗа каждого приглашённого друга ты получаешь бонусы.\nСтань экспертом — приведи 5 друзей и получи Pro бесплатно!", bot_token=bot_token)
-            elif text.lower() in ["📖 сценарии продаж"]:
-                handle_cases(update)
-            elif text.lower() in ["📢 канал с кейсами"]:
-                send_msg(chat_id, "📢 Подпишитесь на наш канал с кейсами:\nhttps://t.me/SaleFlow_News", bot_token=bot_token)
-            else:
-                try:
-                    user = message.get("from", {})
-                    user_mention = f"@{user.get('username')}" if user.get('username') else f"[{user.get('first_name', '')}](tg://user?id={user_id})"
-                    admin_text = f"📩 <b>Сообщение от пользователя</b>\nID: {user_id}\nИмя: {user_mention}\nТекст: {text[:4000]}\nЧат: {chat_id}"
-                    send_msg(ADMIN_ID, admin_text, bot_token=bot_token, disable_preview=True)
-                    send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
-                except Exception as e:
-                    logger.exception("Error forwarding message to admin")
+
+        # Обработка специальных команд, которых нет в словаре (например, пригласить друга, сценарии, канал)
+        if text.lower() in ["👥 пригласить команду", "👥 пригласить друга"]:
+            from ..services.user_service import get_referral_code
+            code = get_referral_code(user_id)
+            ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{code}"
+            send_msg(chat_id, f"👥 <b>Пригласить команду</b>\n\nТвоя реферальная ссылка:\n<code>{ref_link}</code>\n\nЗа каждого приглашённого друга ты получаешь бонусы.\nСтань экспертом — приведи 5 друзей и получи Pro бесплатно!", bot_token=bot_token)
+            return
+        elif text.lower() in ["📖 сценарии продаж"]:
+            handle_cases(update)
+            return
+        elif text.lower() in ["📢 канал с кейсами"]:
+            send_msg(chat_id, "📢 Подпишитесь на наш канал с кейсами:\nhttps://t.me/SaleFlow_News", bot_token=bot_token)
+            return
+        elif text.lower() == "🎬 посмотреть пример анализа":
+            update["message"]["text"] = "Клиент: Здравствуйте! Мне нужна консультация.\nВы: Добрый день! Чем могу помочь?\nКлиент: Хочу понять, как повысить продажи.\nВы: Отличная задача! Давайте обсудим вашу текущую стратегию."
+            handle_analysis_message(update)
+            return
+
+        # Если не команда меню, проверяем состояние ввода для вывода
+        state = get_state_data(user_id)
+        if state and state.get("type", "").startswith("awaiting_withdraw"):
+            handle_withdraw_input(update)
+            return
+
+        # Если ничего не подошло — пересылаем сообщение админу (поддержка)
+        try:
+            user = message.get("from", {})
+            user_mention = f"@{user.get('username')}" if user.get('username') else f"[{user.get('first_name', '')}](tg://user?id={user_id})"
+            admin_text = f"📩 <b>Сообщение от пользователя</b>\nID: {user_id}\nИмя: {user_mention}\nТекст: {text[:4000]}\nЧат: {chat_id}"
+            send_msg(ADMIN_ID, admin_text, bot_token=bot_token, disable_preview=True)
+            send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
+        except Exception as e:
+            logger.exception("Error forwarding message to admin")
     elif "pre_checkout_query" in update:
         handle_pre_checkout_query(update)
     elif "successful_payment" in update.get("message", {}):
