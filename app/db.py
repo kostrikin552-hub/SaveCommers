@@ -296,13 +296,13 @@ def main_menu() -> dict:
     return {
         "keyboard": [
             [{"text": "🚀 Новый разбор сделки"}],
-            [{"text": "💎 Pro доступ"}, {"text": "💰 Мой баланс"}],
-            [{"text": "📈 Мой рост"}, {"text": "👥 Пригласить команду"}],
+            [{"text": "💎 Тарифы"}, {"text": "💰 Мой баланс"}],
+            [{"text": "📈 Мой рост"}, {"text": "👥 Пригласить друга"}],
             [{"text": "📖 Сценарии продаж"}, {"text": "❓ Помощь"}]
         ],
         "resize_keyboard": True,
         "one_time_keyboard": False
-    }
+            }
 
 
 def tariffs_kb(user_id: Optional[int] = None) -> dict:
