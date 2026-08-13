@@ -10,8 +10,8 @@ def create_payment(user_id: int, amount_kopecks: int, plan_type: str, idempotenc
         with transaction(conn):
             cur = conn.cursor()
             cur.execute(
-                """INSERT INTO payments (user_id, amount, currency, status, plan_type, idempotence_key, promo_code)
-                VALUES (%s, %s, 'RUB', 'creating', %s, %s, %s)
+                """INSERT INTO payments (user_id, amount, status, plan_type, idempotence_key, promo_code)
+                VALUES (%s, %s, 'creating', %s, %s, %s)
                 RETURNING id""",
                 (user_id, amount_kopecks, plan_type, idempotence_key, promo_code)
             )
