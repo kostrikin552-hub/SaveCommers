@@ -1,6 +1,8 @@
+# file: app/http/server.py
 import json
 import logging
 import time
+import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
@@ -23,15 +25,18 @@ rate_limiters = {
     'payment': defaultdict(lambda: deque(maxlen=RATE_LIMIT_REQUESTS)),
 }
 
+_rate_limit_lock = threading.Lock()
+
 def is_rate_limited(ip, limiter_key='api'):
     limiter = rate_limiters.get(limiter_key, rate_limiters['api'])
     now = time.time()
-    timestamps = limiter[ip]
-    while timestamps and timestamps[0] < now - RATE_LIMIT_WINDOW:
-        timestamps.popleft()
-    if len(timestamps) >= RATE_LIMIT_REQUESTS:
-        return True
-    timestamps.append(now)
+    with _rate_limit_lock:
+        timestamps = limiter[ip]
+        while timestamps and timestamps[0] < now - RATE_LIMIT_WINDOW:
+            timestamps.popleft()
+        if len(timestamps) >= RATE_LIMIT_REQUESTS:
+            return True
+        timestamps.append(now)
     return False
 
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
@@ -48,20 +53,23 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Access-Control-Allow-Origin', self.get_cors_origin())
+        self.send_header('Access-Control-Allow-Credentials', 'true')
         self.end_headers()
         self.wfile.write(body)
 
     def get_cors_origin(self):
-        if WEBAPP_URL:
-            parsed = urlparse(WEBAPP_URL)
-            return f"{parsed.scheme}://{parsed.netloc}"
-        return "*"
+        if not WEBAPP_URL:
+            logger.error("WEBAPP_URL is not configured")
+            return ""
+        parsed = urlparse(WEBAPP_URL)
+        return f"{parsed.scheme}://{parsed.netloc}"
 
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/":
             self.send_response(200)
             self.send_header('Access-Control-Allow-Origin', self.get_cors_origin())
+            self.send_header('Access-Control-Allow-Credentials', 'true')
             self.end_headers()
             self.wfile.write(b"SaleFlow bot is running")
             return
@@ -72,15 +80,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/payment-success":
             body = """
-            <!DOCTYPE html>
-            <html lang="ru">
-            <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SaleFlow — Оплата</title></head>
-            <body style="font-family: Arial, sans-serif; text-align: center; padding: 40px 20px;">
-                <h1>✅ Оплата принята</h1>
-                <p>Подписка активируется автоматически. Вернитесь в Telegram и продолжайте пользоваться SaleFlow.</p>
-            </body>
-            </html>
-            """.encode('utf-8')
+<!DOCTYPE html>
+<html lang="ru">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SaleFlow — Оплата</title></head>
+<body style="font-family: Arial, sans-serif; text-align: center; padding: 40px 20px;">
+<h1>✅ Оплата принята</h1>
+<p>Подписка активируется автоматически. Вернитесь в Telegram и продолжайте пользоваться SaleFlow.</p>
+</body>
+</html>
+""".encode('utf-8')
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -98,6 +106,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Origin', self.get_cors_origin())
         self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Idempotency-Key')
+        self.send_header('Access-Control-Allow-Credentials', 'true')
         self.end_headers()
 
     def do_POST(self):
@@ -105,6 +114,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(405)
             self.end_headers()
             return
+
         client_ip = self.client_address[0]
         path = self.path
         limiter_key = 'api'
@@ -134,6 +144,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"Invalid Content-Length")
             return
+
         if content_length > MAX_BODY_SIZE:
             self.send_response(413)
             self.end_headers()
