@@ -1,3 +1,4 @@
+# file: app/http/telegram_webhook.py
 import json
 import logging
 import hmac
@@ -21,9 +22,10 @@ def handle_telegram_webhook(handler, body):
         process_update(data)
     except Exception as e:
         logger.exception("Error processing webhook update")
-        handler.send_response(500)
+        # Возвращаем 204, чтобы Telegram не повторял запрос
+        handler.send_response(204)
         handler.end_headers()
-        handler.wfile.write(b"Internal Server Error")
+        handler.wfile.write(b"OK")
         return
 
     handler.send_response(204)
