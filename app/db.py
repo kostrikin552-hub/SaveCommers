@@ -272,6 +272,15 @@ def init_db():
                 logger.info("Adding column sales_health_score to analysis_history")
                 cur.execute("ALTER TABLE analysis_history ADD COLUMN sales_health_score INTEGER")
 
+            # Проверяем наличие колонки main_error
+            cur.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='analysis_history' AND column_name='main_error'
+            """)
+            if not cur.fetchone():
+                logger.info("Adding column main_error to analysis_history")
+                cur.execute("ALTER TABLE analysis_history ADD COLUMN main_error TEXT")
+
             # Аналогично для других колонок, которые могли отсутствовать в старых версиях
             for col in ['lost_sale_risk_level', 'deal_stage', 'seller_level', 'main_strength', 'improvement_area']:
                 cur.execute("""
