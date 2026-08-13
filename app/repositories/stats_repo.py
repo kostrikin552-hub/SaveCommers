@@ -105,19 +105,7 @@ def get_streak(user_id: int) -> int:
             break
     return streak
 
-# ==================== ACHIEVEMENTS ====================
-
-def get_achievement(user_id: int, achievement_id: str) -> Optional[Dict]:
-    return execute_query("SELECT * FROM user_achievements WHERE user_id = %s AND achievement_id = %s", (user_id, achievement_id), fetch_one=True)
-
-def unlock_achievement(user_id: int, achievement_id: str) -> bool:
-    result = execute_query("INSERT INTO user_achievements (user_id, achievement_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (user_id, achievement_id))
-    return bool(result and result > 0)
-
-def get_user_achievements(user_id: int) -> List[Dict]:
-    return execute_query("SELECT achievement_id, unlocked_at FROM user_achievements WHERE user_id = %s ORDER BY unlocked_at", (user_id,), fetch_all=True)
-
-# ==================== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ (новые) ====================
+# ==================== ANALYSIS REQUESTS ====================
 
 def get_analysis_request(user_id: int, idempotency_key: str) -> Optional[Dict]:
     return execute_query(
@@ -157,6 +145,8 @@ def update_analysis_request_status(user_id: int, idempotency_key: str, status: s
             (status, user_id, idempotency_key)
         )
 
+# ==================== USER USAGE ====================
+
 def init_user_usage(user_id: int) -> None:
     execute_query(
         "INSERT INTO user_usage (user_id, free_analyses_used) VALUES (%s, 0) ON CONFLICT DO NOTHING",
@@ -182,6 +172,8 @@ def decrement_free_analyses(user_id: int) -> None:
         (user_id,)
     )
 
+# ==================== WEAKNESSES ====================
+
 def update_user_weaknesses(user_id: int, negatives: List[str]) -> None:
     for neg in negatives:
         if neg:
@@ -191,3 +183,21 @@ def update_user_weaknesses(user_id: int, negatives: List[str]) -> None:
                 "DO UPDATE SET count = user_feedback_stats.count + 1",
                 (user_id, neg)
             )
+
+def get_user_weaknesses(user_id: int, limit: int = 5) -> List[Dict]:
+    return execute_query(
+        "SELECT feedback_text, count FROM user_feedback_stats WHERE user_id = %s ORDER BY count DESC LIMIT %s",
+        (user_id, limit), fetch_all=True
+    )
+
+# ==================== ACHIEVEMENTS ====================
+
+def get_achievement(user_id: int, achievement_id: str) -> Optional[Dict]:
+    return execute_query("SELECT * FROM user_achievements WHERE user_id = %s AND achievement_id = %s", (user_id, achievement_id), fetch_one=True)
+
+def unlock_achievement(user_id: int, achievement_id: str) -> bool:
+    result = execute_query("INSERT INTO user_achievements (user_id, achievement_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (user_id, achievement_id))
+    return bool(result and result > 0)
+
+def get_user_achievements(user_id: int) -> List[Dict]:
+    return execute_query("SELECT achievement_id, unlocked_at FROM user_achievements WHERE user_id = %s ORDER BY unlocked_at", (user_id,), fetch_all=True)
