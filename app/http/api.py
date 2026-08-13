@@ -1,27 +1,43 @@
+# file: app/http/api.py
 import json
 import logging
+import uuid
+import threading
 from urllib.parse import parse_qs, urlparse
 from datetime import datetime
-
-from ..config import BOT_TOKEN, MAX_DIALOG_LENGTH
+from collections import defaultdict
+from time import time
+from ..config import BOT_TOKEN, MAX_DIALOG_LENGTH, RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW
 from ..db import get_connection, transaction, execute_query
-from ..services.analysis_service import perform_analysis, get_cached_analysis, reserve_free_analysis, rollback_free_analysis
-from ..services.subscription_service import get_subscription, days_left
-from ..services.referral_service import get_referral_stats, get_balance, get_referral_status
-from ..repositories.analysis_repo import (
+from ..services.sales_service import perform_analysis, get_cached_analysis, reserve_free_analysis, rollback_free_analysis
+from ..services.user_service import get_subscription, days_left, has_active_subscription
+from ..repositories.stats_repo import (
     get_user_weaknesses,
     get_analysis_history,
     get_user_usage,
     get_analysis_count,
     get_analysis_request,
     delete_analysis_request,
-    create_analysis_request
+    create_analysis_request,
+    get_average_score,
+    get_first_score
 )
-from ..repositories.user_repo import upsert_user, get_user
+from ..repositories.core_repo import upsert_user, get_user
 from ..utils.telegram_utils import verify_init_data
 from ..db import execute_query as db_exec
 
 logger = logging.getLogger(__name__)
+_user_rate_limit = defaultdict(list)
+_user_rate_lock = threading.Lock()
+
+def _get_user_and_info(init_data: str):
+    user_info = verify_init_data(init_data, BOT_TOKEN)
+    if not user_info:
+        raise ValueError("Invalid init_data")
+    user_id = user_info.get('id')
+    if not user_id:
+        raise ValueError("User ID not found")
+    return user_id, user_info
 
 def handle_api_analyze(handler, body):
     try:
@@ -35,17 +51,21 @@ def handle_api_analyze(handler, body):
         handler.send_json_response(400, {"status": "error", "message": "Missing init_data"})
         return
 
-    # === НОРМАЛЬНАЯ ПРОВЕРКА initData (без костылей) ===
-    user_info = verify_init_data(init_data, BOT_TOKEN)
-    if not user_info:
-        logger.warning(f"Invalid init_data: {init_data[:50]}...")
-        handler.send_json_response(403, {"status": "error", "message": "Invalid init_data"})
+    try:
+        user_id, user_info = _get_user_and_info(init_data)
+    except ValueError as e:
+        handler.send_json_response(403, {"status": "error", "message": str(e)})
         return
 
-    user_id = user_info.get('id')
-    if not user_id:
-        handler.send_json_response(400, {"status": "error", "message": "User ID not found"})
-        return
+    now = time()
+    with _user_rate_lock:
+        timestamps = _user_rate_limit[user_id]
+        while timestamps and timestamps[0] < now - RATE_LIMIT_WINDOW:
+            timestamps.pop(0)
+        if len(timestamps) >= RATE_LIMIT_REQUESTS:
+            handler.send_json_response(429, {"status": "error", "message": "Too many requests. Please wait."})
+            return
+        timestamps.append(now)
 
     upsert_user(user_id, user_info.get('username', ''), user_info.get('first_name', ''), user_info.get('last_name', ''))
 
@@ -58,13 +78,13 @@ def handle_api_analyze(handler, body):
         return
 
     idempotency_key = handler.headers.get('X-Idempotency-Key')
-    if idempotency_key and len(idempotency_key) > 128:
+    if not idempotency_key:
+        idempotency_key = str(uuid.uuid4())
+    elif len(idempotency_key) > 128:
         handler.send_json_response(400, {"status": "error", "message": "Idempotency-Key too long"})
         return
 
-    sub = get_subscription(user_id)
-    has_sub = sub is not None
-
+    has_sub = has_active_subscription(user_id)
     analysis_reserved = False
 
     if has_sub:
@@ -81,11 +101,11 @@ def handle_api_analyze(handler, body):
                     handler.send_json_response(409, {"status": "error", "message": "Анализ уже выполняется"})
                     return
                 delete_analysis_request(user_id, idempotency_key)
-        if idempotency_key:
-            if not create_analysis_request(user_id, idempotency_key):
-                handler.send_json_response(409, {"status": "error", "message": "Анализ уже выполняется"})
-                return
-        analysis_reserved = False
+            if idempotency_key:
+                if not create_analysis_request(user_id, idempotency_key):
+                    handler.send_json_response(409, {"status": "error", "message": "Анализ уже выполняется"})
+                    return
+            analysis_reserved = False
     else:
         ok, msg = reserve_free_analysis(user_id, idempotency_key)
         if not ok:
@@ -115,16 +135,18 @@ def handle_api_check_subscription(handler, body):
     except json.JSONDecodeError:
         handler.send_json_response(400, {"error": "Invalid JSON"})
         return
-    user_id = data.get('user_id')
-    if not user_id:
-        handler.send_json_response(400, {"error": "Missing user_id"})
+    init_data = data.get('init_data')
+    if not init_data:
+        handler.send_json_response(400, {"error": "Missing init_data"})
         return
+    try:
+        user_id, _ = _get_user_and_info(init_data)
+    except ValueError as e:
+        handler.send_json_response(403, {"error": str(e)})
+        return
+    has_sub = has_active_subscription(user_id)
     sub = get_subscription(user_id)
-    handler.send_json_response(200, {
-        "has_sub": sub is not None,
-        "plan": sub['plan_type'] if sub else None,
-        "days_left": days_left(user_id) if sub else 0
-    })
+    handler.send_json_response(200, {"has_sub": has_sub, "plan": sub['plan_type'] if sub else None, "days_left": days_left(user_id) if sub else 0})
 
 def handle_api_profile(handler, body):
     try:
@@ -132,38 +154,65 @@ def handle_api_profile(handler, body):
     except json.JSONDecodeError:
         handler.send_json_response(400, {"error": "Invalid JSON"})
         return
-    user_id = data.get('user_id')
-    if not user_id:
-        handler.send_json_response(400, {"error": "Missing user_id"})
+    init_data = data.get('init_data')
+    if not init_data:
+        handler.send_json_response(400, {"error": "Missing init_data"})
+        return
+    try:
+        user_id, _ = _get_user_and_info(init_data)
+    except ValueError as e:
+        handler.send_json_response(403, {"error": str(e)})
         return
 
-    history = get_analysis_history(user_id, limit=20)
+    history = get_analysis_history(user_id, limit=None)
     weaknesses = get_user_weaknesses(user_id)
     free_used = get_user_usage(user_id)
     total = get_analysis_count(user_id)
 
+    if len(history) == 0:
+        trend = "unknown"
+    elif len(history) == 1:
+        trend = "unknown"
+    else:
+        last = history[0]['score']
+        prev = history[1]['score']
+        trend = "up" if last > prev else "down" if last < prev else "stable"
+
+    avg_score = get_average_score(user_id)
+    first_score = get_first_score(user_id)
+
     profile = {
         "total_analyses": total,
         "free_used": free_used,
-        "avg_score": sum(h['score'] for h in history) // len(history) if history else 0,
+        "avg_score": avg_score,
         "last_score": history[0]['score'] if history else 0,
-        "trend": "up" if len(history) > 1 and history[0]['score'] > history[1]['score'] else "down",
-        "weaknesses": [{"text": w['feedback_text'], "count": w['count']} for w in weaknesses[:5]]
+        "trend": trend,
+        "weaknesses": [{"text": w['feedback_text'], "count": w['count']} for w in weaknesses[:5]],
+        "first_score": first_score,
     }
     handler.send_json_response(200, profile)
 
 def handle_api_status(handler, path):
     query = parse_qs(urlparse(path).query)
     key = query.get('key', [None])[0]
-    if not key:
-        handler.send_json_response(400, {"error": "Missing key"})
+    init_data = query.get('init_data', [None])[0]
+    if not key or not init_data:
+        handler.send_json_response(400, {"error": "Missing key or init_data"})
+        return
+    try:
+        user_id, _ = _get_user_and_info(init_data)
+    except ValueError as e:
+        handler.send_json_response(403, {"error": str(e)})
         return
     task = db_exec(
-        "SELECT status, response_json, error_message FROM analysis_queue WHERE idempotency_key = %s ORDER BY created_at DESC LIMIT 1",
+        "SELECT user_id, status, response_json, error_message FROM analysis_queue WHERE idempotency_key = %s ORDER BY created_at DESC LIMIT 1",
         (key,), fetch_one=True
     )
     if not task:
         handler.send_json_response(404, {"error": "Task not found"})
+        return
+    if task['user_id'] != user_id:
+        handler.send_json_response(403, {"error": "Access denied"})
         return
     response = {
         "status": task['status'],
