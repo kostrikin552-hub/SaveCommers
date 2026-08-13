@@ -44,20 +44,26 @@ def activate_subscription(user_id: int, plan: str) -> None:
             _activate_subscription_tx(cur, user_id, plan)
 
 def _extend_subscription_tx(cur, user_id: int, days: int, plan: str = 'pro') -> None:
+    """
+    Продлевает подписку. ВНИМАНИЕ: cur должен быть обычным курсором (не RealDictCursor),
+    поэтому row будет кортежем. Обращаемся по индексам.
+    """
     cur.execute("""SELECT id, end_date, plan_type FROM subscriptions
                    WHERE user_id = %s AND is_active = TRUE AND end_date > NOW()
                    ORDER BY CASE plan_type WHEN 'premium' THEN 3 WHEN 'pro' THEN 2 WHEN 'trial' THEN 1 END DESC, end_date DESC LIMIT 1
                    FOR UPDATE""", (user_id,))
     row = cur.fetchone()
     if row:
-        current_plan = row['plan_type']
-        current_end = row['end_date']
+        # row — кортеж: (id, end_date, plan_type)
+        current_id = row[0]
+        current_end = row[1]
+        current_plan = row[2]
         if PLAN_PRIORITY.get(plan, 0) > PLAN_PRIORITY.get(current_plan, 0):
             final_plan = plan
         else:
             final_plan = current_plan
         new_end = current_end + timedelta(days=days)
-        cur.execute("UPDATE subscriptions SET end_date = %s, plan_type = %s WHERE id = %s", (new_end, final_plan, row['id']))
+        cur.execute("UPDATE subscriptions SET end_date = %s, plan_type = %s WHERE id = %s", (new_end, final_plan, current_id))
     else:
         now = datetime.now(timezone.utc)
         end = now + timedelta(days=days)
@@ -146,6 +152,7 @@ def process_referral_start(user_id: int, code: str, ip: Optional[str] = None):
 
 def _award_referral_bonus_tx(cur, referred_user_id: int, payment_amount_kopecks: int, payment_id: str) -> None:
     from ..repositories.commerce_repo import get_earning_by_payment, get_referral_by_referred, mark_bonus_given
+    # Проверка статуса платежа
     cur.execute("SELECT status FROM payments WHERE payment_id = %s", (payment_id,))
     row = cur.fetchone()
     if not row or row[0] != 'succeeded':
@@ -226,14 +233,14 @@ def approve_withdraw(request_id: int) -> bool:
             cur = conn.cursor()
             cur.execute("SELECT user_id, amount, status FROM withdraw_requests WHERE id = %s FOR UPDATE", (request_id,))
             row = cur.fetchone()
-            if not row or row['status'] != 'pending':
+            if not row or row[2] != 'pending':
                 return False
-            user_id = row['user_id']
-            amount = row['amount']
+            user_id = row[0]
+            amount = row[1]
             # Проверить баланс
             cur.execute("SELECT balance FROM referral_balances WHERE user_id = %s FOR UPDATE", (user_id,))
             bal_row = cur.fetchone()
-            if not bal_row or bal_row['balance'] < amount:
+            if not bal_row or bal_row[0] < amount:
                 return False
             # Списать
             cur.execute("UPDATE referral_balances SET balance = balance - %s WHERE user_id = %s", (amount, user_id))
