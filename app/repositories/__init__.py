@@ -1,6 +1,4 @@
-from .user_repo import *
-from .subscription_repo import *
-from .payment_repo import *
-from .referral_repo import *
-from .achievement_repo import *
-from .analysis_repo import *
+# file: app/repositories/__init__.py
+from .core_repo import *
+from .commerce_repo import *
+from .stats_repo import *
