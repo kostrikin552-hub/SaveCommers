@@ -1,0 +1,193 @@
+# file: app/repositories/stats_repo.py
+from ..db import execute_query, get_connection, transaction
+from typing import Optional, Dict, List
+from datetime import datetime, timedelta, timezone
+
+# ==================== ANALYSIS HISTORY ====================
+
+def save_analysis_history(user_id: int, score: int, markers_found: int, positives: str, negatives: str,
+                          main_error: str = None, lost_sale_risk_level: str = None,
+                          sales_health_score: int = None, deal_stage: str = None,
+                          seller_level: str = None) -> None:
+    execute_query(
+        """INSERT INTO analysis_history (user_id, score, positives_count, positives, negatives, main_error, lost_sale_risk_level, sales_health_score, deal_stage, seller_level)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (user_id, score, markers_found, positives, negatives, main_error, lost_sale_risk_level, sales_health_score, deal_stage, seller_level)
+    )
+
+def get_analysis_count(user_id: int) -> int:
+    row = execute_query("SELECT COUNT(*) FROM analysis_history WHERE user_id = %s", (user_id,), fetch_one=True)
+    return row['count'] if row else 0
+
+def get_analysis_history(user_id: int, limit: Optional[int] = 10) -> List[Dict]:
+    if limit is None:
+        return execute_query("SELECT score, created_at, main_error, sales_health_score, seller_level FROM analysis_history WHERE user_id = %s ORDER BY created_at DESC", (user_id,), fetch_all=True)
+    else:
+        return execute_query("SELECT score, created_at, main_error, sales_health_score, seller_level FROM analysis_history WHERE user_id = %s ORDER BY created_at DESC LIMIT %s", (user_id, limit), fetch_all=True)
+
+def get_analysis_progress(user_id: int, days: int = 7) -> dict:
+    rows = execute_query(
+        """SELECT score, sales_health_score, main_error, created_at
+        FROM analysis_history
+        WHERE user_id = %s AND created_at > NOW() - (%s * INTERVAL '1 day')
+        ORDER BY created_at""",
+        (user_id, days), fetch_all=True
+    )
+    if not rows:
+        return {"avg_score": 0, "avg_health": 0, "trend": 0, "main_errors": [], "history": []}
+    scores = [r['score'] for r in rows]
+    health_scores = [r['sales_health_score'] for r in rows if r['sales_health_score'] is not None]
+    avg_score = sum(scores) // len(scores) if scores else 0
+    avg_health = sum(health_scores) // len(health_scores) if health_scores else 0
+    trend = scores[-1] - scores[0] if len(scores) > 1 else 0
+    errors = {}
+    for r in rows:
+        if r['main_error']:
+            errors[r['main_error']] = errors.get(r['main_error'], 0) + 1
+    main_errors = sorted(errors.items(), key=lambda x: x[1], reverse=True)[:3]
+    history = [{"date": r['created_at'].strftime("%d.%m"), "score": r['score']} for r in rows[-5:]]
+    return {
+        "avg_score": avg_score,
+        "avg_health": avg_health,
+        "trend": trend,
+        "main_errors": main_errors,
+        "history": history
+    }
+
+def get_average_score(user_id: int) -> int:
+    row = execute_query("SELECT AVG(score) FROM analysis_history WHERE user_id = %s", (user_id,), fetch_one=True)
+    return int(row['avg']) if row and row['avg'] else 0
+
+def get_first_score(user_id: int) -> Optional[int]:
+    row = execute_query("SELECT score FROM analysis_history WHERE user_id = %s ORDER BY created_at LIMIT 1", (user_id,), fetch_one=True)
+    return row['score'] if row else None
+
+def get_user_progress(user_id: int) -> dict:
+    first_row = execute_query(
+        "SELECT score FROM analysis_history WHERE user_id = %s ORDER BY created_at ASC LIMIT 1",
+        (user_id,), fetch_one=True
+    )
+    last_row = execute_query(
+        "SELECT score FROM analysis_history WHERE user_id = %s ORDER BY created_at DESC LIMIT 1",
+        (user_id,), fetch_one=True
+    )
+    first_score = first_row['score'] if first_row else None
+    last_score = last_row['score'] if last_row else None
+    change = (last_score - first_score) if (first_score is not None and last_score is not None) else 0
+    errors = execute_query(
+        "SELECT main_error, COUNT(*) as cnt FROM analysis_history WHERE user_id = %s AND main_error IS NOT NULL GROUP BY main_error ORDER BY cnt DESC LIMIT 1",
+        (user_id,), fetch_one=True
+    )
+    improvement_area = errors['main_error'] if errors else None
+    return {
+        "first_score": first_score,
+        "last_score": last_score,
+        "change": change,
+        "improvement_area": improvement_area
+    }
+
+def get_streak(user_id: int) -> int:
+    rows = execute_query(
+        """SELECT DISTINCT DATE(created_at) as day
+        FROM analysis_history
+        WHERE user_id = %s
+        ORDER BY day DESC""",
+        (user_id,), fetch_all=True
+    )
+    if not rows:
+        return 0
+    streak = 0
+    today = datetime.now(timezone.utc).date()
+    for row in rows:
+        if row['day'] == today - timedelta(days=streak):
+            streak += 1
+        else:
+            break
+    return streak
+
+# ==================== ACHIEVEMENTS ====================
+
+def get_achievement(user_id: int, achievement_id: str) -> Optional[Dict]:
+    return execute_query("SELECT * FROM user_achievements WHERE user_id = %s AND achievement_id = %s", (user_id, achievement_id), fetch_one=True)
+
+def unlock_achievement(user_id: int, achievement_id: str) -> bool:
+    result = execute_query("INSERT INTO user_achievements (user_id, achievement_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (user_id, achievement_id))
+    return bool(result and result > 0)
+
+def get_user_achievements(user_id: int) -> List[Dict]:
+    return execute_query("SELECT achievement_id, unlocked_at FROM user_achievements WHERE user_id = %s ORDER BY unlocked_at", (user_id,), fetch_all=True)
+
+# ==================== НОВЫЕ ФУНКЦИИ (добавлены) ====================
+
+def get_analysis_request(user_id: int, idempotency_key: str) -> Optional[Dict]:
+    return execute_query(
+        "SELECT * FROM analysis_requests WHERE user_id = %s AND idempotency_key = %s",
+        (user_id, idempotency_key), fetch_one=True
+    )
+
+def delete_analysis_request(user_id: int, idempotency_key: str) -> bool:
+    execute_query(
+        "DELETE FROM analysis_requests WHERE user_id = %s AND idempotency_key = %s",
+        (user_id, idempotency_key)
+    )
+    return True
+
+def create_analysis_request(user_id: int, idempotency_key: str) -> bool:
+    existing = get_analysis_request(user_id, idempotency_key)
+    if existing:
+        return False
+    execute_query(
+        "INSERT INTO analysis_requests (user_id, idempotency_key, status, created_at, processing_started_at) "
+        "VALUES (%s, %s, 'processing', NOW(), NOW())",
+        (user_id, idempotency_key)
+    )
+    return True
+
+def update_analysis_request_status(user_id: int, idempotency_key: str, status: str, response_json: Optional[str] = None) -> None:
+    if response_json is not None:
+        execute_query(
+            "UPDATE analysis_requests SET status = %s, response_json = %s, completed_at = NOW() "
+            "WHERE user_id = %s AND idempotency_key = %s",
+            (status, response_json, user_id, idempotency_key)
+        )
+    else:
+        execute_query(
+            "UPDATE analysis_requests SET status = %s, completed_at = NOW() "
+            "WHERE user_id = %s AND idempotency_key = %s",
+            (status, user_id, idempotency_key)
+        )
+
+def init_user_usage(user_id: int) -> None:
+    execute_query(
+        "INSERT INTO user_usage (user_id, free_analyses_used) VALUES (%s, 0) ON CONFLICT DO NOTHING",
+        (user_id,)
+    )
+
+def get_user_usage(user_id: int) -> int:
+    row = execute_query(
+        "SELECT free_analyses_used FROM user_usage WHERE user_id = %s",
+        (user_id,), fetch_one=True
+    )
+    return row['free_analyses_used'] if row else 0
+
+def increment_free_analyses(user_id: int) -> None:
+    execute_query(
+        "UPDATE user_usage SET free_analyses_used = free_analyses_used + 1 WHERE user_id = %s",
+        (user_id,)
+    )
+
+def decrement_free_analyses(user_id: int) -> None:
+    execute_query(
+        "UPDATE user_usage SET free_analyses_used = GREATEST(free_analyses_used - 1, 0) WHERE user_id = %s",
+        (user_id,)
+    )
+
+def update_user_weaknesses(user_id: int, negatives: List[str]) -> None:
+    for neg in negatives:
+        if neg:
+            execute_query(
+                "INSERT INTO user_feedback_stats (user_id, feedback_text, count) "
+                "VALUES (%s, %s, 1) ON CONFLICT (user_id, feedback_text) "
+                "DO UPDATE SET count = user_feedback_stats.count + 1",
+                (user_id, neg)
+            )
