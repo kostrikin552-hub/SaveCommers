@@ -1,3 +1,4 @@
+# file: app/repositories/stats_repo.py
 from ..db import execute_query, get_connection, transaction
 from typing import Optional, Dict, List
 from datetime import datetime, timedelta, timezone
@@ -20,9 +21,9 @@ def get_analysis_count(user_id: int) -> int:
 
 def get_analysis_history(user_id: int, limit: Optional[int] = 10) -> List[Dict]:
     if limit is None:
-        return execute_query("SELECT score, created_at, main_error, sales_health_score, seller_level FROM analysis_history WHERE user_id = %s ORDER BY created_at DESC", (user_id,), fetch_all=True)
+        return execute_query("SELECT score, sales_health_score, main_error, seller_level, created_at FROM analysis_history WHERE user_id = %s ORDER BY created_at DESC", (user_id,), fetch_all=True)
     else:
-        return execute_query("SELECT score, created_at, main_error, sales_health_score, seller_level FROM analysis_history WHERE user_id = %s ORDER BY created_at DESC LIMIT %s", (user_id, limit), fetch_all=True)
+        return execute_query("SELECT score, sales_health_score, main_error, seller_level, created_at FROM analysis_history WHERE user_id = %s ORDER BY created_at DESC LIMIT %s", (user_id, limit), fetch_all=True)
 
 def get_analysis_progress(user_id: int, days: int = 7) -> dict:
     rows = execute_query(
@@ -62,21 +63,27 @@ def get_first_score(user_id: int) -> Optional[int]:
     return row['score'] if row else None
 
 def get_user_progress(user_id: int) -> dict:
-    """Возвращает прогресс пользователя: первый/последний балл, изменение, количество анализов, средний балл и зону улучшения."""
+    """
+    Возвращает прогресс пользователя на основе sales_health_score:
+    первый, последний, изменение, количество анализов, средний балл, зона улучшения.
+    """
+    # Первый sales_health_score
     first_row = execute_query(
-        "SELECT score FROM analysis_history WHERE user_id = %s ORDER BY created_at ASC LIMIT 1",
+        "SELECT sales_health_score FROM analysis_history WHERE user_id = %s ORDER BY created_at ASC LIMIT 1",
         (user_id,), fetch_one=True
     )
+    # Последний sales_health_score
     last_row = execute_query(
-        "SELECT score FROM analysis_history WHERE user_id = %s ORDER BY created_at DESC LIMIT 1",
+        "SELECT sales_health_score FROM analysis_history WHERE user_id = %s ORDER BY created_at DESC LIMIT 1",
         (user_id,), fetch_one=True
     )
+    # Количество и средний
     count_row = execute_query(
-        "SELECT COUNT(*) as cnt, AVG(score) as avg FROM analysis_history WHERE user_id = %s",
+        "SELECT COUNT(*) as cnt, AVG(sales_health_score) as avg FROM analysis_history WHERE user_id = %s",
         (user_id,), fetch_one=True
     )
-    first_score = first_row['score'] if first_row else None
-    last_score = last_row['score'] if last_row else None
+    first_score = first_row['sales_health_score'] if first_row else None
+    last_score = last_row['sales_health_score'] if last_row else None
     total_analyses = count_row['cnt'] if count_row else 0
     avg_score = int(count_row['avg']) if count_row and count_row['avg'] is not None else 0
 
@@ -84,6 +91,7 @@ def get_user_progress(user_id: int) -> dict:
     if first_score is not None and last_score is not None:
         change = last_score - first_score
 
+    # Главная зона роста (из последнего main_error, если есть)
     errors = execute_query(
         "SELECT main_error, COUNT(*) as cnt FROM analysis_history WHERE user_id = %s AND main_error IS NOT NULL GROUP BY main_error ORDER BY cnt DESC LIMIT 1",
         (user_id,), fetch_one=True
