@@ -1,4 +1,3 @@
-# file: app/handlers/user.py
 import logging
 from html import escape
 from typing import Dict, Any
@@ -12,7 +11,7 @@ from ..services.user_service import (
 )
 from ..repositories.stats_repo import (
     get_analysis_history, get_user_weaknesses, get_user_usage, get_analysis_count,
-    get_analysis_progress, get_streak
+    get_analysis_progress, get_streak, get_user_progress
 )
 from ..utils import send_msg, answer_cb
 from ..utils.analytics import log_event
@@ -72,28 +71,51 @@ def handle_progress(update: Dict[str, Any]) -> None:
     user_id = update["message"]["from"]["id"]
     bot_token = update.get("bot_token")
 
-    progress = get_analysis_progress(user_id, days=7)
-    streak = get_streak(user_id)
+    progress = get_user_progress(user_id)
+    first = progress.get('first_score')
+    last = progress.get('last_score')
+    change = progress.get('change', 0)
+    total = progress.get('total_analyses', 0)
+    avg = progress.get('avg_score', 0)
+    area = progress.get('improvement_area')
 
-    if progress['avg_score'] == 0 and progress['avg_health'] == 0:
+    if total == 0 or first is None:
         msg = "📊 У вас пока нет анализов. Начните с первой переписки!"
+        send_msg(chat_id, msg, bot_token=bot_token)
+        return
+
+    # Определяем уровень
+    if last >= 80:
+        level = "🏆 Эксперт продаж"
+    elif last >= 60:
+        level = "🥇 Сильный продавец"
+    elif last >= 40:
+        level = "🥈 Уверенный продавец"
     else:
-        trend_emoji = "📈" if progress['trend'] > 0 else "📉" if progress['trend'] < 0 else "➖"
-        msg = (
-            f"📈 <b>Ваш прогресс за последние 7 дней</b>\n\n"
-            f"Средний Sales Health Score: {progress['avg_health']}\n"
-            f"Средняя оценка продавца: {progress['avg_score']} {trend_emoji} ({'+' if progress['trend'] > 0 else ''}{progress['trend']})\n"
-            f"🔥 Серия: {streak} дней подряд\n\n"
-        )
-        if progress['main_errors']:
-            msg += "<b>Главные проблемы:</b>\n"
-            for error, count in progress['main_errors']:
-                msg += f"• {error} ({count} раз)\n"
-        else:
-            msg += "✅ Ошибок не обнаружено! Отличная работа.\n"
-        msg += "\n<b>Последние анализы:</b>\n"
-        for item in progress['history']:
-            msg += f"{item['date']} — {item['score']}\n"
+        level = "🥉 Новичок"
+
+    msg = (
+        f"📈 <b>Ваш прогресс</b>\n\n"
+        f"Уровень: {level}\n"
+        f"Всего анализов: {total}\n"
+        f"Средний балл: {avg}/100\n\n"
+        f"Первый анализ: {first}/100\n"
+        f"Сейчас: {last}/100\n"
+    )
+
+    if change > 0:
+        msg += f"Рост: +{change} баллов 🚀\n"
+    elif change < 0:
+        msg += f"Снижение: {change} баллов 📉\n"
+    else:
+        msg += "Стабильно: 0 баллов ➖\n"
+
+    if area:
+        msg += f"\n🎯 <b>Главная зона роста:</b>\n{area}\n"
+        msg += "Следующая цель: Научиться задавать правильные вопросы клиенту.\n"
+
+    msg += "\nПродолжайте анализировать диалоги — каждый шаг приближает вас к экспертному уровню! 💪"
+
     send_msg(chat_id, msg, bot_token=bot_token)
 
 # ==================== ANALYSIS ====================
@@ -276,14 +298,6 @@ def handle_withdraw_callback(update: Dict[str, Any]) -> None:
         answer_cb(query["id"], bot_token, "Неизвестная команда")
         return
 
-    # Обработка шагов ввода
-    if state.get("type") == "awaiting_withdraw_method":
-        method = data  # данные приходят в callback? Нет, callback не несёт текста, только кнопки. Лучше использовать message.
-        # На самом деле мы не можем получить текст через callback, нужно использовать сообщение.
-        # Поэтому переделаем: при нажатии "withdraw_start" мы установим состояние и отправим сообщение с просьбой ввести номер.
-        # Затем пользователь вводит текст, и мы обрабатываем его в handle_message, а не в callback.
-        pass
-
 def handle_withdraw_input(update: Dict[str, Any]) -> None:
     """Обработка текстовых сообщений для ввода данных вывода."""
     message = update.get("message", {})
@@ -300,7 +314,6 @@ def handle_withdraw_input(update: Dict[str, Any]) -> None:
         return
 
     if step == "awaiting_withdraw_method":
-        # Сохраняем метод (номер телефона/карты)
         state["method"] = text
         state["type"] = "awaiting_withdraw_bank"
         set_state(user_id, state["type"], {"method": text})
@@ -335,17 +348,14 @@ def handle_withdraw_input(update: Dict[str, Any]) -> None:
             clear_state(user_id)
             send_msg(chat_id, "❌ Ошибка: не все данные введены. Начните заново.", bot_token=bot_token)
             return
-        # Создаём заявку
         request_id = create_withdraw_request(user_id, amount_rub, method, method, bank, full_name)
         if request_id is None:
             send_msg(chat_id, "❌ Не удалось создать заявку на вывод. Проверьте баланс или попробуйте позже.", bot_token=bot_token)
             clear_state(user_id)
             return
         clear_state(user_id)
-        # Отправляем подтверждение пользователю
         send_msg(chat_id, f"✅ Заявка на вывод {amount_rub} ₽ создана. Ожидайте подтверждения администратором.", bot_token=bot_token)
         
-        # Отправляем уведомление администратору
         admin_text = (
             f"💰 <b>Новая заявка на вывод</b>\n"
             f"Пользователь: {user_id}\n"
