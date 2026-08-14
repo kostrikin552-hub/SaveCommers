@@ -44,3 +44,6 @@ B2B_ENABLED = False
 REFERRAL_PERCENT = 20
 REFERRAL_DAYS = 7
 FREE_ANALYSIS_LIMIT = 5
+
+# file: app/config.py (дополнение)
+NEW_ANALYZER_ENABLED = os.getenv("NEW_ANALYZER_ENABLED", "False").lower() == "true"
