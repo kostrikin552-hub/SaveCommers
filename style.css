@@ -1,4 +1,5 @@
 /* file: style.css */
+
 :root {
     --primary: #6C5CE7;
     --primary-dark: #5A4BD1;
@@ -315,4 +316,216 @@ select option {
         flex: 1 1 100%;
     }
     body { padding: 12px; }
+}
+
+/* ============================================ */
+/* ====== Стили для этапа 2 ====== */
+
+/* Главный результат */
+.main-result-box {
+    background: var(--card-bg);
+    border-radius: var(--border-radius);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: var(--shadow);
+}
+.main-result-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.main-result-icon {
+    font-size: 1.6rem;
+}
+.main-result-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    flex: 1;
+}
+.main-result-score {
+    font-size: 1.8rem;
+    font-weight: 800;
+    padding: 4px 12px;
+    border-radius: 30px;
+}
+.main-result-score.good { background: rgba(0, 206, 201, 0.2); color: #00cec9; }
+.main-result-score.medium { background: rgba(253, 203, 110, 0.2); color: #fdcb6e; }
+.main-result-score.bad { background: rgba(225, 112, 85, 0.2); color: #e17055; }
+.main-result-risk {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.95rem;
+}
+.risk-label {
+    font-weight: 600;
+}
+.risk-reason {
+    color: var(--text-secondary);
+}
+
+/* Карточка ошибки */
+.error-card {
+    background: rgba(225, 112, 85, 0.08);
+    border-left: 4px solid #e17055;
+    border-radius: var(--border-radius);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+}
+.error-card.success {
+    border-left-color: #00b894;
+    background: rgba(0, 184, 148, 0.08);
+}
+.error-card-header {
+    font-weight: 700;
+    font-size: 1.05rem;
+    margin-bottom: 6px;
+}
+.error-card-body p {
+    margin: 4px 0;
+    color: var(--text-secondary);
+}
+.error-card-body strong {
+    color: #fff;
+}
+
+/* Идеальный ответ */
+.ideal-response-box {
+    background: rgba(108, 92, 231, 0.08);
+    border: 1px solid rgba(108, 92, 231, 0.2);
+    border-radius: var(--border-radius);
+    padding: 16px 20px;
+    margin-bottom: 20px;
+}
+.ideal-response-header {
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 6px;
+    color: var(--primary);
+}
+.ideal-response-body {
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--text);
+}
+
+/* Аккордеон */
+.accordion {
+    margin: 20px 0;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    background: var(--card-bg);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.accordion-header {
+    padding: 16px 20px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.03);
+    transition: var(--transition);
+}
+.accordion-header:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+.accordion-header::after {
+    content: '▸';
+    font-size: 1.4rem;
+    transition: transform 0.3s ease;
+}
+.accordion-header.open::after {
+    transform: rotate(90deg);
+}
+.accordion-body {
+    padding: 0 20px 20px;
+    display: none;
+}
+.accordion-body .detail-block {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.accordion-body .detail-block:first-child {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 0;
+}
+.detail-title {
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 6px;
+    color: #fff;
+}
+
+/* ============================================ */
+/* ====== Стили для этапа 3 ====== */
+
+/* Тренерское упражнение */
+.exercise-box {
+    background: rgba(253, 121, 168, 0.08);
+    border: 1px solid rgba(253, 121, 168, 0.2);
+    border-radius: var(--border-radius);
+    padding: 16px 20px;
+    margin-bottom: 20px;
+}
+.exercise-header {
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 6px;
+    color: #FD79A8;
+}
+.exercise-body {
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--text);
+}
+
+/* Блок PRO улучшенный */
+.pro-block {
+    background: linear-gradient(135deg, rgba(108, 92, 231, 0.15), rgba(253, 121, 168, 0.10));
+    border: 1px solid rgba(108, 92, 231, 0.3);
+    border-radius: var(--border-radius);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 20px rgba(108, 92, 231, 0.2);
+}
+.pro-header {
+    font-size: 1.4rem;
+    font-weight: 800;
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 10px;
+}
+.pro-body p {
+    margin: 6px 0;
+}
+.pro-features {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0;
+}
+.pro-features li {
+    padding: 4px 0 4px 28px;
+    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="%236C5CE7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>') left center no-repeat;
+    background-size: 18px;
+    color: var(--text-secondary);
+}
+.pro-btn {
+    width: 100%;
+    margin-top: 10px;
+    padding: 16px;
+    font-size: 1.1rem;
+    background: var(--primary-gradient);
+    box-shadow: 0 4px 20px rgba(108, 92, 231, 0.5);
+}
+.pro-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 6px 30px rgba(108, 92, 231, 0.7);
 }
