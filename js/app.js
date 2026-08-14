@@ -34,12 +34,9 @@ function showErrorToast(message) {
     showToast('❌ ' + message, 'error');
 }
 
-// Copy text
 function copyText(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).catch(() => {
-            fallbackCopy(text);
-        });
+        navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
     } else {
         fallbackCopy(text);
     }
@@ -61,7 +58,7 @@ function fallbackCopy(text) {
     document.body.removeChild(textarea);
 }
 
-// UIRenderer
+// ====== UIRenderer ======
 class UIRenderer {
     constructor() {
         this.resultContainer = document.getElementById('step-result');
@@ -120,6 +117,75 @@ class UIRenderer {
         }
     }
 
+    // ====== ГЕНЕРАЦИЯ ТРЕНЕРСКОГО УПРАЖНЕНИЯ ======
+    _generateExercise(analysis) {
+        const mainError = analysis.main_error;
+        if (!mainError) {
+            return "Попробуйте в следующем диалоге задать клиенту вопрос: «Что для вас сейчас самое важное?» — это поможет выявить потребности.";
+        }
+        const title = mainError.title || '';
+        if (title.includes('потребность') || title.includes('Потребность')) {
+            return "Перед обсуждением цены спросите клиента: «Какую задачу вы хотите решить?» или «Что для вас сейчас важно?»";
+        }
+        if (title.includes('следующий шаг') || title.includes('Следующий шаг')) {
+            return "Завершайте диалог чётким следующим шагом: «Давайте я подготовлю КП и отправлю его завтра. Когда вам удобно обсудить?»";
+        }
+        if (title.includes('возражение') || title.includes('Возражение')) {
+            return "Когда клиент возражает, спросите: «По сравнению с чем вам кажется дорого?» или «Что именно вызывает сомнение?»";
+        }
+        if (title.includes('цена без ценности') || title.includes('Цена без ценности')) {
+            return "Добавьте к цене объяснение выгоды: «Стоимость — 1000 рублей, но за счёт этого вы получите экономию 3 часов в неделю.»";
+        }
+        return "Попробуйте в следующем диалоге задать клиенту вопрос: «Что для вас сейчас самое важное?» — это поможет выявить потребности.";
+    }
+
+    // ====== УЛУЧШЕННЫЙ БЛОК PRO ======
+    _renderUpgradeEnhanced(upgrade, currentScore) {
+        const container = document.createElement('div');
+        container.className = 'pro-block';
+
+        let nextLevel = '';
+        let nextScore = 0;
+        if (currentScore < 40) {
+            nextLevel = '🥈 Уверенный продавец';
+            nextScore = 40;
+        } else if (currentScore < 60) {
+            nextLevel = '🥇 Сильный продавец';
+            nextScore = 60;
+        } else if (currentScore < 80) {
+            nextLevel = '🏆 Эксперт продаж';
+            nextScore = 80;
+        } else {
+            nextLevel = '🏆 Мастер продаж';
+            nextScore = 100;
+        }
+
+        const gap = Math.max(0, nextScore - currentScore);
+        const title = upgrade.title || '🚀 Хотите расти быстрее?';
+        const text = upgrade.text || 'Оформите подписку и получите неограниченный доступ.';
+
+        container.innerHTML = `
+            <div class="pro-header">${title}</div>
+            <div class="pro-body">
+                <p><strong>Ваш следующий уровень:</strong> ${nextLevel} (достигните ${nextScore} баллов)</p>
+                <p>Вам осталось всего <strong>${gap} баллов</strong> до следующего уровня!</p>
+                <ul class="pro-features">
+                    <li>📈 История ваших навыков</li>
+                    <li>🔥 Повторяющиеся ошибки</li>
+                    <li>🧠 Персональный план развития</li>
+                    <li>💬 Больше вариантов ответов</li>
+                    <li>🎯 Тренерские упражнения каждый день</li>
+                </ul>
+                <p style="font-size:0.95rem; color:var(--text-secondary); margin: 10px 0;">${text}</p>
+                <button class="btn-primary pro-btn" onclick="window.Telegram?.WebApp?.openTelegramLink('https://t.me/${BOT_USERNAME}?start=tariffs')">
+                    🚀 Открыть PRO
+                </button>
+            </div>
+        `;
+        return container;
+    }
+
+    // ====== ОСНОВНОЙ МЕТОД РЕНДЕРИНГА (этап 3) ======
     renderResult(data) {
         const analysis = data.analysis;
         const achievements = data.achievements || [];
@@ -156,296 +222,291 @@ class UIRenderer {
             return;
         }
 
-        // 1. Риск потери сделки
-        if (analysis.money_loss) {
-            const ml = analysis.money_loss;
-            const riskDiv = document.createElement('div');
-            riskDiv.className = 'error-box';
-            const title = document.createElement('strong');
-            title.textContent = `💰 ${ml.title}`;
-            const p1 = document.createElement('p');
-            p1.innerHTML = `<strong>Причина:</strong> ${ml.reason}`;
-            const p2 = document.createElement('p');
-            p2.innerHTML = `<strong>Что изменить:</strong> ${ml.action}`;
-            riskDiv.append(title, p1, p2);
-            container.appendChild(riskDiv);
-        }
+        // ============================================================
+        // 1. ГЛАВНЫЙ РЕЗУЛЬТАТ (Sales Health Score + риск)
+        // ============================================================
+        const mainResult = document.createElement('div');
+        mainResult.className = 'main-result-box';
+        const healthScore = analysis.sales_health_score || 0;
+        const risk = analysis.money_loss || { level: 'low', title: 'Низкий риск', reason: 'Диалог прошёл хорошо', action: 'Продолжайте в том же духе.' };
+        const scoreCls = healthScore >= 70 ? 'good' : healthScore >= 50 ? 'medium' : 'bad';
+        mainResult.innerHTML = `
+            <div class="main-result-header">
+                <span class="main-result-icon">🔥</span>
+                <span class="main-result-title">Результат сделки</span>
+                <span class="main-result-score ${scoreCls}">${healthScore}%</span>
+            </div>
+            <div class="main-result-risk">
+                <span class="risk-label">${risk.level === 'high' ? '⚠️ Высокий риск' : risk.level === 'medium' ? '⚡ Средний риск' : '✅ Низкий риск'}</span>
+                <span class="risk-reason">${risk.reason}</span>
+            </div>
+        `;
+        container.appendChild(mainResult);
 
-        // 2. Причины потери
-        if (analysis.lost_deals_reasons && analysis.lost_deals_reasons.length) {
-            const reasonsDiv = document.createElement('div');
-            reasonsDiv.className = 'influence-box';
-            const title = document.createElement('strong');
-            title.textContent = '🔥 Главные причины потери сделок:';
-            const ul = document.createElement('ul');
-            analysis.lost_deals_reasons.forEach(r => {
-                const li = document.createElement('li');
-                li.innerHTML = `<strong>${r.title}</strong> — ${r.explanation}`;
-                ul.appendChild(li);
-            });
-            reasonsDiv.append(title, ul);
-            container.appendChild(reasonsDiv);
-        }
-
-        // 3. Sales Health Score (прогресс-бар)
-        if (analysis.sales_health_score !== undefined) {
-            const healthScore = analysis.sales_health_score;
-            const wrapper = document.createElement('div');
-            wrapper.className = 'score-wrapper';
-            const cls = healthScore >= 70 ? 'good' : healthScore >= 50 ? 'medium' : 'bad';
-            wrapper.innerHTML = `
-                <div class="score-label">
-                    <span>Sales Health Score</span>
-                    <span>${healthScore}%</span>
-                </div>
-                <div class="score-bar">
-                    <div class="score-bar-fill ${cls}" style="width: ${healthScore}%;"></div>
+        // ============================================================
+        // 2. ГЛАВНАЯ ПРОБЛЕМА (первая ошибка с решением)
+        // ============================================================
+        const mainError = analysis.main_error || null;
+        if (mainError) {
+            const errorBlock = document.createElement('div');
+            errorBlock.className = 'error-card';
+            errorBlock.innerHTML = `
+                <div class="error-card-header">❌ ${mainError.title}</div>
+                <div class="error-card-body">
+                    <p><strong>Почему это опасно:</strong> ${mainError.explanation || 'Это снижает доверие клиента и уменьшает вероятность сделки.'}</p>
+                    <p><strong>Что делать:</strong> ${analysis.next_best_action || 'Задайте уточняющий вопрос клиенту.'}</p>
                 </div>
             `;
-            container.appendChild(wrapper);
+            container.appendChild(errorBlock);
+        } else if (analysis.lost_deals_reasons && analysis.lost_deals_reasons.length > 0) {
+            const first = analysis.lost_deals_reasons[0];
+            const errorBlock = document.createElement('div');
+            errorBlock.className = 'error-card';
+            errorBlock.innerHTML = `
+                <div class="error-card-header">❌ ${first.title}</div>
+                <div class="error-card-body">
+                    <p><strong>Почему это опасно:</strong> ${first.explanation || 'Это снижает доверие клиента.'}</p>
+                    <p><strong>Что делать:</strong> ${analysis.next_best_action || 'Задайте уточняющий вопрос клиенту.'}</p>
+                </div>
+            `;
+            container.appendChild(errorBlock);
+        } else {
+            const noError = document.createElement('div');
+            noError.className = 'error-card success';
+            noError.innerHTML = `
+                <div class="error-card-header">✅ Отличный диалог!</div>
+                <div class="error-card-body">
+                    <p>Вы хорошо провели переговоры. Продолжайте в том же духе.</p>
+                </div>
+            `;
+            container.appendChild(noError);
         }
 
-        // 4. Прогресс
+        // ============================================================
+        // 3. ИДЕАЛЬНЫЙ ОТВЕТ
+        // ============================================================
+        const responseText = analysis.strong_response_example || analysis.idealResponse || '---';
+        const idealBox = document.createElement('div');
+        idealBox.className = 'ideal-response-box';
+        idealBox.innerHTML = `
+            <div class="ideal-response-header">💬 Готовый ответ для клиента</div>
+            <div class="ideal-response-body">${responseText}</div>
+        `;
+        container.appendChild(idealBox);
+
+        // ============================================================
+        // 4. ТРЕНЕРСКОЕ УПРАЖНЕНИЕ (на основе главной ошибки)
+        // ============================================================
+        const exercise = this._generateExercise(analysis);
+        if (exercise) {
+            const exerciseBlock = document.createElement('div');
+            exerciseBlock.className = 'exercise-box';
+            exerciseBlock.innerHTML = `
+                <div class="exercise-header">🎯 Ваше упражнение на сегодня</div>
+                <div class="exercise-body">${exercise}</div>
+            `;
+            container.appendChild(exerciseBlock);
+        }
+
+        // ============================================================
+        // 5. БЛОК PRO (если нет подписки и есть upgrade)
+        // ============================================================
+        if (!hasSub && upgrade) {
+            const proBlock = this._renderUpgradeEnhanced(upgrade, healthScore);
+            container.appendChild(proBlock);
+        }
+
+        // ============================================================
+        // 6. АККОРДЕОН "ПОЛНЫЙ РАЗБОР" (без upgrade и promo)
+        // ============================================================
+        const accordion = document.createElement('div');
+        accordion.className = 'accordion';
+        const accordionHeader = document.createElement('div');
+        accordionHeader.className = 'accordion-header';
+        accordionHeader.innerHTML = '📋 Полный разбор';
+        accordionHeader.addEventListener('click', () => {
+            const body = accordion.querySelector('.accordion-body');
+            body.style.display = body.style.display === 'none' ? 'block' : 'none';
+            accordionHeader.classList.toggle('open');
+        });
+        const accordionBody = document.createElement('div');
+        accordionBody.className = 'accordion-body';
+        accordionBody.style.display = 'none';
+
+        // Все блоки, кроме upgrade и promo (они уже вынесены)
+        // 6.1. Детали ошибок (negatives)
+        if (analysis.negatives && analysis.negatives.length) {
+            const negBlock = document.createElement('div');
+            negBlock.className = 'detail-block';
+            const negTitle = document.createElement('div');
+            negTitle.className = 'detail-title';
+            negTitle.textContent = '❌ Что улучшить';
+            negBlock.appendChild(negTitle);
+            const list = document.createElement('ul');
+            analysis.negatives.forEach(n => {
+                const li = document.createElement('li');
+                li.textContent = n;
+                list.appendChild(li);
+            });
+            negBlock.appendChild(list);
+            accordionBody.appendChild(negBlock);
+        }
+
+        // 6.2. Положительные моменты
+        if (analysis.positives && analysis.positives.length) {
+            const posBlock = document.createElement('div');
+            posBlock.className = 'detail-block';
+            const posTitle = document.createElement('div');
+            posTitle.className = 'detail-title';
+            posTitle.textContent = '✅ Что хорошо';
+            posBlock.appendChild(posTitle);
+            const list = document.createElement('ul');
+            analysis.positives.forEach(p => {
+                const li = document.createElement('li');
+                li.textContent = p;
+                list.appendChild(li);
+            });
+            posBlock.appendChild(list);
+            accordionBody.appendChild(posBlock);
+        }
+
+        // 6.3. Уровень продавца
+        if (analysis.seller_level) {
+            const levelBlock = document.createElement('div');
+            levelBlock.className = 'detail-block';
+            levelBlock.innerHTML = `
+                <div class="detail-title">🧠 Уровень продавца</div>
+                <p><strong>${analysis.seller_level.label}</strong> — ${analysis.seller_level.description}</p>
+            `;
+            accordionBody.appendChild(levelBlock);
+        }
+
+        // 6.4. Прогресс (если есть)
         if (data.progress_summary && data.progress_summary.total_analyses >= 2) {
             const ps = data.progress_summary;
-            const progressDiv = document.createElement('div');
-            progressDiv.className = 'progress-box';
-            progressDiv.innerHTML = `
-                <strong>📈 Ваш прогресс</strong>
+            const progBlock = document.createElement('div');
+            progBlock.className = 'detail-block';
+            progBlock.innerHTML = `
+                <div class="detail-title">📈 Ваш прогресс</div>
                 <p>Первый анализ: ${ps.first_score}/100<br>
                 Сейчас: ${ps.last_score}/100<br>
                 Изменение: ${ps.change > 0 ? '+' : ''}${ps.change} баллов (${ps.trend})</p>
             `;
-            container.appendChild(progressDiv);
+            accordionBody.appendChild(progBlock);
         }
 
-        // 5. Серия
+        // 6.5. Серия
         if (data.streak !== undefined && data.streak > 0) {
-            const streakDiv = document.createElement('div');
-            streakDiv.className = 'info-box';
-            streakDiv.innerHTML = `🔥 Серия: <strong>${data.streak}</strong> дней подряд!`;
-            container.appendChild(streakDiv);
+            const streakBlock = document.createElement('div');
+            streakBlock.className = 'detail-block';
+            streakBlock.innerHTML = `🔥 Серия: <strong>${data.streak}</strong> дней подряд!`;
+            accordionBody.appendChild(streakBlock);
         }
 
-        // 6. Чек-лист
+        // 6.6. Чек-лист
         if (data.checklist && data.checklist.length) {
-            const checklistDiv = document.createElement('div');
-            checklistDiv.className = 'suggestion-box';
-            checklistDiv.innerHTML = `<strong>📋 Чек-лист перед отправкой:</strong><ul>`;
+            const checkBlock = document.createElement('div');
+            checkBlock.className = 'detail-block';
+            const title = document.createElement('div');
+            title.className = 'detail-title';
+            title.textContent = '📋 Чек-лист перед отправкой';
+            checkBlock.appendChild(title);
+            const list = document.createElement('ul');
             data.checklist.forEach(item => {
-                checklistDiv.innerHTML += `<li>${item}</li>`;
+                const li = document.createElement('li');
+                li.textContent = item;
+                list.appendChild(li);
             });
-            checklistDiv.innerHTML += '</ul>';
-            container.appendChild(checklistDiv);
+            checkBlock.appendChild(list);
+            accordionBody.appendChild(checkBlock);
         }
 
-        // 7. Оценка продавца (прогресс-бар)
-        if (analysis.score !== undefined) {
-            const score = analysis.score;
-            const wrapper = document.createElement('div');
-            wrapper.className = 'score-wrapper';
-            const cls = score >= 70 ? 'good' : score >= 50 ? 'medium' : 'bad';
-            wrapper.innerHTML = `
-                <div class="score-label">
-                    <span>Оценка продавца (навыки)</span>
-                    <span>${score}%</span>
-                </div>
-                <div class="score-bar">
-                    <div class="score-bar-fill ${cls}" style="width: ${score}%;"></div>
-                </div>
-            `;
-            container.appendChild(wrapper);
-        }
-
-        // 8. Уровень продавца
-        if (analysis.seller_level) {
-            const levelDiv = document.createElement('div');
-            levelDiv.className = 'info-box';
-            levelDiv.innerHTML = `<strong>🧠 Уровень продавца:</strong> ${analysis.seller_level.label} — ${analysis.seller_level.description}`;
-            container.appendChild(levelDiv);
-        }
-
-        // 9. Pro Value
+        // 6.7. Pro Value (если есть)
         if (proValue) {
-            const proDiv = document.createElement('div');
-            proDiv.className = 'upgrade-box';
-            const title = document.createElement('strong');
+            const proBlock = document.createElement('div');
+            proBlock.className = 'detail-block upgrade-box';
+            const title = document.createElement('div');
+            title.className = 'detail-title';
             title.textContent = proValue.title;
+            proBlock.appendChild(title);
             const ul = document.createElement('ul');
             proValue.items.forEach(item => {
                 const li = document.createElement('li');
                 li.textContent = item;
                 ul.appendChild(li);
             });
-            proDiv.append(title, ul);
-            container.appendChild(proDiv);
+            proBlock.appendChild(ul);
+            accordionBody.appendChild(proBlock);
         }
 
-        // 10. Locked features
+        // 6.8. Locked features
         if (analysis.locked_features && analysis.locked_features.length) {
-            const lockedDiv = document.createElement('div');
-            lockedDiv.className = 'influence-box';
-            const title = document.createElement('strong');
-            title.textContent = '🔒 Доступно в Pro:';
+            const lockBlock = document.createElement('div');
+            lockBlock.className = 'detail-block influence-box';
+            const title = document.createElement('div');
+            title.className = 'detail-title';
+            title.textContent = '🔒 Доступно в Pro';
+            lockBlock.appendChild(title);
             const ul = document.createElement('ul');
             analysis.locked_features.forEach(f => {
                 const li = document.createElement('li');
                 li.innerHTML = `<strong>${f.title}</strong> — ${f.preview}`;
                 ul.appendChild(li);
             });
-            lockedDiv.append(title, ul);
-            container.appendChild(lockedDiv);
+            lockBlock.appendChild(ul);
+            accordionBody.appendChild(lockBlock);
         }
 
-        // 11. Return trigger
+        // 6.9. Return trigger
         if (returnTrigger) {
-            const returnDiv = document.createElement('div');
-            returnDiv.className = 'suggestion-box';
-            const title = document.createElement('strong');
-            title.textContent = returnTrigger.title;
-            const p = document.createElement('p');
-            p.textContent = returnTrigger.text;
-            returnDiv.append(title, p);
-            container.appendChild(returnDiv);
+            const retBlock = document.createElement('div');
+            retBlock.className = 'detail-block suggestion-box';
+            retBlock.innerHTML = `
+                <div class="detail-title">${returnTrigger.title}</div>
+                <p>${returnTrigger.text}</p>
+            `;
+            accordionBody.appendChild(retBlock);
         }
 
-        // 12. Milestone
+        // 6.10. Milestone
         if (milestone) {
-            const msDiv = document.createElement('div');
-            msDiv.className = 'progress-box';
-            const title = document.createElement('strong');
-            title.textContent = milestone.title;
-            const p = document.createElement('p');
-            p.textContent = milestone.text;
-            msDiv.append(title, p);
-            container.appendChild(msDiv);
+            const msBlock = document.createElement('div');
+            msBlock.className = 'detail-block progress-box';
+            msBlock.innerHTML = `
+                <div class="detail-title">${milestone.title}</div>
+                <p>${milestone.text}</p>
+            `;
+            accordionBody.appendChild(msBlock);
         }
 
-        // 13. Ошибки
-        const feedbackDiv = document.createElement('div');
-        if (analysis.positives && analysis.positives.length) {
-            const posTitle = document.createElement('div');
-            posTitle.textContent = '✅ Что хорошо:';
-            feedbackDiv.appendChild(posTitle);
-            analysis.positives.forEach(p => {
-                const item = document.createElement('div');
-                item.className = 'feedback-item positive';
-                item.textContent = p;
-                feedbackDiv.appendChild(item);
-            });
-        }
-        if (analysis.negatives && analysis.negatives.length) {
-            const negTitle = document.createElement('div');
-            negTitle.textContent = '❌ Что улучшить:';
-            feedbackDiv.appendChild(negTitle);
-            analysis.negatives.forEach(n => {
-                const item = document.createElement('div');
-                item.className = 'feedback-item negative';
-                item.textContent = n;
-                feedbackDiv.appendChild(item);
-            });
-        }
-        container.appendChild(feedbackDiv);
-
-        // 14. Идеальный ответ
-        const responseText = analysis.strong_response_example || analysis.idealResponse || '---';
-        const idealBox = document.createElement('div');
-        idealBox.className = 'suggestion-box';
-        const idealTitle = document.createElement('strong');
-        idealTitle.textContent = '💬 Пример сильного ответа:';
-        const idealP = document.createElement('p');
-        idealP.className = 'ideal-response';
-        idealP.textContent = responseText;
-        idealBox.append(idealTitle, idealP);
-        container.appendChild(idealBox);
-
-        // 15. Следующий шаг
-        if (analysis.next_best_action) {
-            const actionDiv = document.createElement('div');
-            actionDiv.className = 'suggestion-box';
-            const actionTitle = document.createElement('strong');
-            actionTitle.textContent = '🎯 Следующий шаг:';
-            const actionText = document.createElement('p');
-            actionText.textContent = analysis.next_best_action;
-            actionDiv.appendChild(actionTitle);
-            actionDiv.appendChild(actionText);
-            container.appendChild(actionDiv);
-        }
-
-        // 16. Drafts
-        const drafts = analysis.drafts || {};
-        const draftBox = document.createElement('div');
-        draftBox.className = 'draft-buttons';
-        const draftLabels = {
-            soft: { label: '😊 Мягкий', hint: 'Сохранить отношения' },
-            business: { label: '📊 Деловой', hint: 'Двинуть сделку' },
-            expert: { label: '🧠 Экспертный 🔒', hint: 'Доступно в Pro' }
-        };
-        const isExpertLocked = !(hasSub || analysis.hasSub);
-        for (const [key, info] of Object.entries(draftLabels)) {
-            const btn = document.createElement('button');
-            btn.className = 'btn-secondary';
-            if (isExpertLocked && key === 'expert') {
-                btn.classList.add('expert-locked');
-                btn.title = 'Этот вариант помогает закрывать сделки через ценность. Активируйте Pro, чтобы использовать его.';
-                btn.addEventListener('click', () => {
-                    showToast('🧠 Экспертный ответ доступен в Pro. Он помогает закрывать сделки через ценность. Активируйте Pro, чтобы использовать его.', 'info');
-                    if (window.Telegram?.WebApp?.openTelegramLink) {
-                        window.Telegram.WebApp.openTelegramLink(`https://t.me/${BOT_USERNAME}?start=tariffs`);
-                    } else {
-                        window.open(`https://t.me/${BOT_USERNAME}?start=tariffs`, '_blank', 'noopener,noreferrer');
-                    }
-                });
-            } else {
-                btn.textContent = info.label;
-                btn.title = info.hint;
-                btn.addEventListener('click', () => {
-                    const text = drafts[key] || '';
-                    if (text) copyText(text);
-                });
-            }
-            draftBox.appendChild(btn);
-        }
-        container.appendChild(draftBox);
-
-        // 17. Достижения
+        // 6.11. Достижения
         if (achievements.length) {
-            const achDiv = document.createElement('div');
-            achDiv.className = 'achievements-section';
-            const achTitle = document.createElement('h3');
+            const achBlock = document.createElement('div');
+            achBlock.className = 'detail-block';
+            const achTitle = document.createElement('div');
+            achTitle.className = 'detail-title';
             achTitle.textContent = '🏆 Достижения';
-            achDiv.appendChild(achTitle);
+            achBlock.appendChild(achTitle);
+            const list = document.createElement('ul');
             achievements.forEach(ach => {
-                const item = document.createElement('div');
-                item.className = 'feedback-item positive';
-                item.textContent = `${ach.emoji || ''} ${ach.name || ''} — ${ach.desc || ''}`;
-                achDiv.appendChild(item);
+                const li = document.createElement('li');
+                li.textContent = `${ach.emoji || ''} ${ach.name || ''} — ${ach.desc || ''}`;
+                list.appendChild(li);
             });
-            container.appendChild(achDiv);
+            achBlock.appendChild(list);
+            accordionBody.appendChild(achBlock);
             this.showAchievementToasts(achievements);
         }
 
-        // 18. Upgrade / Paywall
-        if (upgrade) {
-            const upgradeEl = this._renderUpgrade(upgrade);
-            container.appendChild(upgradeEl);
-        }
-
-        // 19. Промо-оффер
-        if (promoOffer) {
-            const promoEl = this._renderPromoOffer(promoOffer);
-            container.appendChild(promoEl);
-        }
-
-        // 20. Лимиты
+        // 6.12. Лимиты
         if (limits) {
-            const limitDiv = document.createElement('div');
-            limitDiv.className = 'info-box';
+            const limitBlock = document.createElement('div');
+            limitBlock.className = 'detail-block info-box';
             const used = limits.used || 0;
             const total = limits.total || 5;
             const left = Math.max(0, total - used);
             if (left === 0) {
-                limitDiv.innerHTML = `
+                limitBlock.innerHTML = `
                     <strong>📊 Вы использовали все ${total} бесплатных разборов.</strong>
                     <p>Ваши ошибки уже видны. Теперь SaleFlow может помогать исправлять их постоянно.</p>
                     <button class="btn-primary" style="margin-top:8px;" onclick="window.Telegram?.WebApp?.openTelegramLink('https://t.me/${BOT_USERNAME}?start=tariffs')">
@@ -453,17 +514,28 @@ class UIRenderer {
                     </button>
                 `;
             } else {
-                limitDiv.textContent = `📊 Бесплатных анализов осталось: ${left} из ${total}`;
+                limitBlock.textContent = `📊 Бесплатных анализов осталось: ${left} из ${total}`;
             }
-            container.appendChild(limitDiv);
+            accordionBody.appendChild(limitBlock);
         }
 
-        // 21. Поделиться
+        // 6.13. Следующий шаг (если есть и не был показан в карточке ошибки)
+        if (analysis.next_best_action && !analysis.main_error) {
+            const actionBlock = document.createElement('div');
+            actionBlock.className = 'detail-block suggestion-box';
+            actionBlock.innerHTML = `
+                <div class="detail-title">🎯 Следующий шаг</div>
+                <p>${analysis.next_best_action}</p>
+            `;
+            accordionBody.appendChild(actionBlock);
+        }
+
+        // 6.14. Кнопка "Поделиться"
         const shareBtn = document.createElement('button');
         shareBtn.className = 'btn-secondary share-btn';
         shareBtn.textContent = '📤 Поделиться результатом';
         shareBtn.addEventListener('click', () => {
-            const shareText = `Я проверил свой диалог с клиентом в SaleFlow. Результат: 🔥 ${analysis.score}/100\nНашёл ошибки, которые могли стоить продажи.\nПроверьте свой: https://t.me/SaleFlow_Bot`;
+            const shareText = `Я проверил свой диалог с клиентом в SaleFlow. Результат: 🔥 ${healthScore}/100\nНашёл ошибки, которые могли стоить продажи.\nПроверьте свой: https://t.me/SaleFlow_Bot`;
             if (navigator.share) {
                 navigator.share({ text: shareText });
             } else {
@@ -471,9 +543,9 @@ class UIRenderer {
                 showToast('Скопировано! Отправьте в соцсети');
             }
         });
-        container.appendChild(shareBtn);
+        accordionBody.appendChild(shareBtn);
 
-        // 22. Новый анализ
+        // 6.15. Кнопка "Новый анализ"
         const newAnalysisBtn = document.createElement('button');
         newAnalysisBtn.className = 'btn-primary';
         newAnalysisBtn.textContent = '🔄 Новый анализ';
@@ -481,9 +553,13 @@ class UIRenderer {
             this.clearDialog();
             document.getElementById('step-upload').scrollIntoView({ behavior: 'smooth' });
         });
-        container.appendChild(newAnalysisBtn);
+        accordionBody.appendChild(newAnalysisBtn);
 
-        // Прокрутка к результатам с небольшой задержкой для рендеринга
+        accordion.appendChild(accordionHeader);
+        accordion.appendChild(accordionBody);
+        container.appendChild(accordion);
+
+        // Прокрутка к результатам
         this._scrollToResults();
     }
 
@@ -496,6 +572,7 @@ class UIRenderer {
         }, 150);
     }
 
+    // Старый метод _renderUpgrade оставлен для совместимости, но не используется
     _renderUpgrade(upgrade) {
         if (!upgrade || typeof upgrade !== 'object') {
             return document.createElement('div');
@@ -569,7 +646,7 @@ class UIRenderer {
     }
 }
 
-// Main
+// ====== MAIN ======
 document.addEventListener('DOMContentLoaded', () => {
     if (window.Telegram && window.Telegram.WebApp) {
         try {
