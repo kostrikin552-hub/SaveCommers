@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 # ==================== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ====================
 
 def _format_date(dt) -> str:
-    """Форматирует datetime в читаемую строку (день.месяц.год)"""
     if not dt:
         return "неизвестно"
     if isinstance(dt, str):
@@ -96,6 +95,8 @@ def handle_start(update: Dict[str, Any]) -> None:
     )
     send_msg(chat_id, msg, bot_token=update.get("bot_token"), kb=main_menu())
 
+# ==================== PROGRESS ====================
+
 def handle_progress(update: Dict[str, Any]) -> None:
     chat_id = update["message"]["chat"]["id"]
     user_id = update["message"]["from"]["id"]
@@ -114,7 +115,6 @@ def handle_progress(update: Dict[str, Any]) -> None:
         send_msg(chat_id, msg, bot_token=bot_token)
         return
 
-    # Определяем уровень
     if last >= 80:
         level = "🏆 Эксперт продаж"
     elif last >= 60:
@@ -286,10 +286,10 @@ def handle_referral_message(update: Dict[str, Any]) -> None:
     bot_token = update.get("bot_token")
     code = get_ref_code(user_id)
     ref_count, bonus = get_referral_stats(user_id)
-    balance = get_balance(user_id)  # в копейках
+    balance = get_balance(user_id)
     status = get_referral_status(user_id)
     status_text = "🏆 Эксперт" if status["is_expert"] else f"🟡 До эксперта осталось {status['next_level']} приглашений"
-    
+
     text = (
         f"💰 <b>Мой баланс</b>\n\n"
         f"Ваш код: <code>{escape(code)}</code>\n"
@@ -299,11 +299,11 @@ def handle_referral_message(update: Dict[str, Any]) -> None:
         f"Статус: {status_text}\n\n"
         "Пригласи друзей — получи статус эксперта и бесплатный Pro на месяц!"
     )
-    
+
     kb = None
-    if balance >= 50000:  # 500 руб
+    if balance >= 50000:
         kb = {"inline_keyboard": [[{"text": "💸 Вывести средства", "callback_data": "withdraw_start"}]]}
-    
+
     send_msg(chat_id, text, bot_token=bot_token, kb=kb)
 
 def handle_withdraw_callback(update: Dict[str, Any]) -> None:
@@ -383,7 +383,7 @@ def handle_withdraw_input(update: Dict[str, Any]) -> None:
             return
         clear_state(user_id)
         send_msg(chat_id, f"✅ Заявка на вывод {amount_rub} ₽ создана. Ожидайте подтверждения администратором.", bot_token=bot_token)
-        
+
         admin_text = (
             f"💰 <b>Новая заявка на вывод</b>\n"
             f"Пользователь: {user_id}\n"
