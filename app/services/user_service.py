@@ -45,8 +45,7 @@ def activate_subscription(user_id: int, plan: str) -> None:
 
 def _extend_subscription_tx(cur, user_id: int, days: int, plan: str = 'pro') -> None:
     """
-    Продлевает подписку. ВНИМАНИЕ: cur должен быть обычным курсором (не RealDictCursor),
-    поэтому row будет кортежем. Обращаемся по индексам.
+    Продлевает подписку. Если активной подписки нет – деактивирует все старые и создаёт новую.
     """
     cur.execute("""SELECT id, end_date, plan_type FROM subscriptions
                    WHERE user_id = %s AND is_active = TRUE AND end_date > NOW()
@@ -65,6 +64,8 @@ def _extend_subscription_tx(cur, user_id: int, days: int, plan: str = 'pro') -> 
         new_end = current_end + timedelta(days=days)
         cur.execute("UPDATE subscriptions SET end_date = %s, plan_type = %s WHERE id = %s", (new_end, final_plan, current_id))
     else:
+        # Нет активной подписки — деактивируем все старые (на случай, если есть с is_active=TRUE но истекшие)
+        cur.execute("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (user_id,))
         now = datetime.now(timezone.utc)
         end = now + timedelta(days=days)
         cur.execute("INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (%s, %s, 'active', %s, %s, TRUE)", (user_id, plan, now, end))
@@ -116,6 +117,8 @@ def activate_trial(user_id: int) -> bool:
         return False
     if has_active_subscription(user_id):
         return False
+    # Деактивируем все старые активные подписки (на случай зависших)
+    execute_query("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (user_id,))
     create_subscription(user_id, 'trial', 3)
     return True
 
@@ -152,7 +155,6 @@ def process_referral_start(user_id: int, code: str, ip: Optional[str] = None):
 
 def _award_referral_bonus_tx(cur, referred_user_id: int, payment_amount_kopecks: int, payment_id: str) -> None:
     from ..repositories.commerce_repo import get_earning_by_payment, get_referral_by_referred, mark_bonus_given
-    # Проверка статуса платежа
     cur.execute("SELECT status FROM payments WHERE payment_id = %s", (payment_id,))
     row = cur.fetchone()
     if not row or row[0] != 'succeeded':
@@ -198,11 +200,6 @@ def award_referral_bonus(referred_user_id: int, payment_amount_kopecks: int, pay
 # ==================== WITHDRAW ====================
 
 def create_withdraw_request(user_id: int, amount_rub: int, method: str, details: str, bank: str, full_name: str) -> Optional[int]:
-    """
-    Создаёт заявку на вывод.
-    amount_rub — сумма в рублях (целое число).
-    Возвращает ID заявки или None, если ошибка.
-    """
     if amount_rub < 500:
         logger.warning(f"Withdraw amount {amount_rub} < 500 for user {user_id}")
         return None
@@ -224,10 +221,6 @@ def create_withdraw_request(user_id: int, amount_rub: int, method: str, details:
             return request_id
 
 def approve_withdraw(request_id: int) -> bool:
-    """
-    Подтверждает заявку на вывод, списывает баланс.
-    Возвращает True при успехе.
-    """
     with get_connection() as conn:
         with transaction(conn):
             cur = conn.cursor()
@@ -237,14 +230,11 @@ def approve_withdraw(request_id: int) -> bool:
                 return False
             user_id = row[0]
             amount = row[1]
-            # Проверить баланс
             cur.execute("SELECT balance FROM referral_balances WHERE user_id = %s FOR UPDATE", (user_id,))
             bal_row = cur.fetchone()
             if not bal_row or bal_row[0] < amount:
                 return False
-            # Списать
             cur.execute("UPDATE referral_balances SET balance = balance - %s WHERE user_id = %s", (amount, user_id))
-            # Обновить статус заявки
             cur.execute("UPDATE withdraw_requests SET status = 'completed' WHERE id = %s", (request_id,))
             return True
 
@@ -254,10 +244,8 @@ def get_withdraw_request(request_id: int) -> Optional[Dict]:
 def get_pending_withdraw_requests() -> list:
     return execute_query("SELECT * FROM withdraw_requests WHERE status = 'pending' ORDER BY created_at", fetch_all=True)
 
-# ==================== OLD WITHDRAW (заглушка) ====================
 def withdraw(user_id: int, amount: int, method: str, details: str, bank: str, full_name: str):
-    # Устаревшая функция, используйте create_withdraw_request
-    return create_withdraw_request(user_id, amount // 100, method, details, bank, full_name)  # amount в копейках?
+    return create_withdraw_request(user_id, amount // 100, method, details, bank, full_name)
 
 # ==================== REFERRAL STATUS ====================
 
