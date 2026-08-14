@@ -36,7 +36,6 @@ def handle_payment_message(update: Dict[str, Any]) -> None:
     bot_token = update.get("bot_token")
     log_event(user_id, 'paywall_shown')
 
-    # Проверяем текущую подписку
     sub = get_subscription(user_id)
     end_date_str = ""
     if sub:
