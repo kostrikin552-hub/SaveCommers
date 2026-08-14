@@ -64,26 +64,26 @@ def get_first_score(user_id: int) -> Optional[int]:
 
 def get_user_progress(user_id: int) -> dict:
     """
-    Возвращает прогресс пользователя на основе sales_health_score:
-    первый, последний, изменение, количество анализов, средний балл, зона улучшения.
+    Возвращает прогресс пользователя на основе sales_health_score.
+    Первый анализ — берётся первое ненулевое значение (игнорируем 0 и NULL).
     """
-    # Первый sales_health_score
+    # Первый sales_health_score > 0
     first_row = execute_query(
-        "SELECT sales_health_score FROM analysis_history WHERE user_id = %s ORDER BY created_at ASC LIMIT 1",
+        "SELECT sales_health_score FROM analysis_history WHERE user_id = %s AND (sales_health_score IS NOT NULL AND sales_health_score > 0) ORDER BY created_at ASC LIMIT 1",
         (user_id,), fetch_one=True
     )
-    # Последний sales_health_score
+    # Последний sales_health_score (может быть 0, но это нормально)
     last_row = execute_query(
         "SELECT sales_health_score FROM analysis_history WHERE user_id = %s ORDER BY created_at DESC LIMIT 1",
         (user_id,), fetch_one=True
     )
-    # Количество и средний
+    # Количество анализов с sales_health_score > 0 (для среднего)
     count_row = execute_query(
-        "SELECT COUNT(*) as cnt, AVG(sales_health_score) as avg FROM analysis_history WHERE user_id = %s",
+        "SELECT COUNT(*) as cnt, AVG(sales_health_score) as avg FROM analysis_history WHERE user_id = %s AND sales_health_score > 0",
         (user_id,), fetch_one=True
     )
-    first_score = first_row['sales_health_score'] if first_row else None
-    last_score = last_row['sales_health_score'] if last_row else None
+    first_score = first_row['sales_health_score'] if first_row else 0
+    last_score = last_row['sales_health_score'] if last_row else 0
     total_analyses = count_row['cnt'] if count_row else 0
     avg_score = int(count_row['avg']) if count_row and count_row['avg'] is not None else 0
 
