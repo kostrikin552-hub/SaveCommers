@@ -185,7 +185,7 @@ class UIRenderer {
         return container;
     }
 
-    // ====== ОСНОВНОЙ МЕТОД РЕНДЕРИНГА (этап 3) ======
+    // ====== ОСНОВНОЙ МЕТОД РЕНДЕРИНГА ======
     renderResult(data) {
         const analysis = data.analysis;
         const achievements = data.achievements || [];
@@ -282,6 +282,29 @@ class UIRenderer {
             container.appendChild(noError);
         }
 
+        // ====== РЕКОМЕНДАЦИИ (если есть) ======
+        if (analysis.recommendations && analysis.recommendations.length) {
+            const recBlock = document.createElement('div');
+            recBlock.className = 'recommendations-box';
+            const recTitle = document.createElement('div');
+            recTitle.className = 'recommendations-title';
+            recTitle.textContent = '💡 Что улучшить';
+            recBlock.appendChild(recTitle);
+            analysis.recommendations.forEach(rec => {
+                const card = document.createElement('div');
+                card.className = 'recommendation-card';
+                card.innerHTML = `
+                    <div class="rec-header">${rec.title}</div>
+                    <div class="rec-body">
+                        <p><strong>Совет:</strong> ${rec.advice}</p>
+                        <p><strong>Пример:</strong> «${rec.example}»</p>
+                    </div>
+                `;
+                recBlock.appendChild(card);
+            });
+            container.appendChild(recBlock);
+        }
+
         // ============================================================
         // 3. ИДЕАЛЬНЫЙ ОТВЕТ
         // ============================================================
@@ -317,7 +340,7 @@ class UIRenderer {
         }
 
         // ============================================================
-        // 6. АККОРДЕОН "ПОЛНЫЙ РАЗБОР" (без upgrade и promo)
+        // 6. АККОРДЕОН "ПОЛНЫЙ РАЗБОР" (с статусами)
         // ============================================================
         const accordion = document.createElement('div');
         accordion.className = 'accordion';
@@ -333,8 +356,37 @@ class UIRenderer {
         accordionBody.className = 'accordion-body';
         accordionBody.style.display = 'none';
 
-        // Все блоки, кроме upgrade и promo (они уже вынесены)
-        // 6.1. Детали ошибок (negatives)
+        // ----- СТАТУСЫ (новые поля) -----
+        const iconMap = { 'done': '✅', 'partial': '⚠️', 'failed': '❌', 'unknown': '❓' };
+        if (analysis.needs_enhanced) {
+            const st = analysis.needs_enhanced.status || 'unknown';
+            const icon = iconMap[st] || '❓';
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'detail-block';
+            statusDiv.innerHTML = `<div class="detail-title">Выявление потребности ${icon}</div>
+                <p>${analysis.needs_enhanced.reason || ''}</p>`;
+            accordionBody.appendChild(statusDiv);
+        }
+        if (analysis.next_step_enhanced) {
+            const st = analysis.next_step_enhanced.status || 'unknown';
+            const icon = iconMap[st] || '❓';
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'detail-block';
+            statusDiv.innerHTML = `<div class="detail-title">Следующий шаг ${icon}</div>
+                <p>${analysis.next_step_enhanced.reason || ''}</p>`;
+            accordionBody.appendChild(statusDiv);
+        }
+        if (analysis.objection_enhanced) {
+            const st = analysis.objection_enhanced.status || 'unknown';
+            const icon = iconMap[st] || '❓';
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'detail-block';
+            statusDiv.innerHTML = `<div class="detail-title">Обработка возражений ${icon}</div>
+                <p>${analysis.objection_enhanced.reason || ''}</p>`;
+            accordionBody.appendChild(statusDiv);
+        }
+
+        // Остальные детали
         if (analysis.negatives && analysis.negatives.length) {
             const negBlock = document.createElement('div');
             negBlock.className = 'detail-block';
@@ -352,7 +404,6 @@ class UIRenderer {
             accordionBody.appendChild(negBlock);
         }
 
-        // 6.2. Положительные моменты
         if (analysis.positives && analysis.positives.length) {
             const posBlock = document.createElement('div');
             posBlock.className = 'detail-block';
@@ -370,7 +421,6 @@ class UIRenderer {
             accordionBody.appendChild(posBlock);
         }
 
-        // 6.3. Уровень продавца
         if (analysis.seller_level) {
             const levelBlock = document.createElement('div');
             levelBlock.className = 'detail-block';
@@ -381,7 +431,6 @@ class UIRenderer {
             accordionBody.appendChild(levelBlock);
         }
 
-        // 6.4. Прогресс (если есть)
         if (data.progress_summary && data.progress_summary.total_analyses >= 2) {
             const ps = data.progress_summary;
             const progBlock = document.createElement('div');
@@ -395,7 +444,6 @@ class UIRenderer {
             accordionBody.appendChild(progBlock);
         }
 
-        // 6.5. Серия
         if (data.streak !== undefined && data.streak > 0) {
             const streakBlock = document.createElement('div');
             streakBlock.className = 'detail-block';
@@ -403,7 +451,6 @@ class UIRenderer {
             accordionBody.appendChild(streakBlock);
         }
 
-        // 6.6. Чек-лист
         if (data.checklist && data.checklist.length) {
             const checkBlock = document.createElement('div');
             checkBlock.className = 'detail-block';
@@ -421,7 +468,6 @@ class UIRenderer {
             accordionBody.appendChild(checkBlock);
         }
 
-        // 6.7. Pro Value (если есть)
         if (proValue) {
             const proBlock = document.createElement('div');
             proBlock.className = 'detail-block upgrade-box';
@@ -439,7 +485,6 @@ class UIRenderer {
             accordionBody.appendChild(proBlock);
         }
 
-        // 6.8. Locked features
         if (analysis.locked_features && analysis.locked_features.length) {
             const lockBlock = document.createElement('div');
             lockBlock.className = 'detail-block influence-box';
@@ -457,7 +502,6 @@ class UIRenderer {
             accordionBody.appendChild(lockBlock);
         }
 
-        // 6.9. Return trigger
         if (returnTrigger) {
             const retBlock = document.createElement('div');
             retBlock.className = 'detail-block suggestion-box';
@@ -468,7 +512,6 @@ class UIRenderer {
             accordionBody.appendChild(retBlock);
         }
 
-        // 6.10. Milestone
         if (milestone) {
             const msBlock = document.createElement('div');
             msBlock.className = 'detail-block progress-box';
@@ -479,7 +522,6 @@ class UIRenderer {
             accordionBody.appendChild(msBlock);
         }
 
-        // 6.11. Достижения
         if (achievements.length) {
             const achBlock = document.createElement('div');
             achBlock.className = 'detail-block';
@@ -498,7 +540,6 @@ class UIRenderer {
             this.showAchievementToasts(achievements);
         }
 
-        // 6.12. Лимиты
         if (limits) {
             const limitBlock = document.createElement('div');
             limitBlock.className = 'detail-block info-box';
@@ -519,7 +560,6 @@ class UIRenderer {
             accordionBody.appendChild(limitBlock);
         }
 
-        // 6.13. Следующий шаг (если есть и не был показан в карточке ошибки)
         if (analysis.next_best_action && !analysis.main_error) {
             const actionBlock = document.createElement('div');
             actionBlock.className = 'detail-block suggestion-box';
@@ -530,7 +570,6 @@ class UIRenderer {
             accordionBody.appendChild(actionBlock);
         }
 
-        // 6.14. Кнопка "Поделиться"
         const shareBtn = document.createElement('button');
         shareBtn.className = 'btn-secondary share-btn';
         shareBtn.textContent = '📤 Поделиться результатом';
@@ -545,7 +584,6 @@ class UIRenderer {
         });
         accordionBody.appendChild(shareBtn);
 
-        // 6.15. Кнопка "Новый анализ"
         const newAnalysisBtn = document.createElement('button');
         newAnalysisBtn.className = 'btn-primary';
         newAnalysisBtn.textContent = '🔄 Новый анализ';
@@ -559,7 +597,6 @@ class UIRenderer {
         accordion.appendChild(accordionBody);
         container.appendChild(accordion);
 
-        // Прокрутка к результатам
         this._scrollToResults();
     }
 
@@ -572,11 +609,9 @@ class UIRenderer {
         }, 150);
     }
 
-    // Старый метод _renderUpgrade оставлен для совместимости, но не используется
     _renderUpgrade(upgrade) {
-        if (!upgrade || typeof upgrade !== 'object') {
-            return document.createElement('div');
-        }
+        // оставлен для совместимости, но не используется
+        if (!upgrade || typeof upgrade !== 'object') return document.createElement('div');
         const container = document.createElement('div');
         container.className = 'upgrade-box';
         const title = document.createElement('h3');
@@ -599,9 +634,7 @@ class UIRenderer {
     }
 
     _renderPromoOffer(promo) {
-        if (!promo || typeof promo !== 'object') {
-            return document.createElement('div');
-        }
+        if (!promo || typeof promo !== 'object') return document.createElement('div');
         const container = document.createElement('div');
         container.className = 'upgrade-box';
         container.style.border = '2px solid #f59e0b';
