@@ -8,7 +8,8 @@ from .user import (
     handle_support_message, handle_support_callback,
     process_referral_start, handle_referral_message, handle_referral_callback,
     handle_company_message, handle_company_callback,
-    handle_withdraw_callback, handle_withdraw_input
+    handle_withdraw_callback, handle_withdraw_input,
+    handle_check_db  # <-- импорт новой функции
 )
 from .payments import (
     handle_payment_callback, handle_payment_message,
@@ -70,12 +71,14 @@ def process_update(update: Dict[str, Any]) -> None:
         if text.startswith("/support"):
             handle_support_message(update)
             return
+        if text.startswith("/check_db"):  # <-- добавлено
+            handle_check_db(update)
+            return
 
         # === ОБРАБОТКА КОМАНД ГЛАВНОГО МЕНЮ ===
         # Очищаем состояние вывода перед любой командой меню (чтобы не мешало)
         lower_text = text.lower()
 
-        # Список всех команд меню с их обработчиками
         menu_commands = {
             "🚀 новый разбор сделки": handle_analysis_message,
             "новый разбор сделки": handle_analysis_message,
@@ -94,7 +97,6 @@ def process_update(update: Dict[str, Any]) -> None:
 
         for cmd, handler in menu_commands.items():
             if lower_text == cmd.lower():
-                # Если есть состояние вывода, сбрасываем его
                 state = get_state_data(user_id)
                 if state and state.get("type", "").startswith("awaiting_withdraw"):
                     clear_state(user_id)
