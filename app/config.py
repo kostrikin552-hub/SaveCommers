@@ -1,3 +1,4 @@
+# file: app/config.py
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -45,5 +46,5 @@ REFERRAL_PERCENT = 20
 REFERRAL_DAYS = 7
 FREE_ANALYSIS_LIMIT = 5
 
-# file: app/config.py (дополнение)
+# ====== НОВЫЙ ФЛАГ ДЛЯ УЛУЧШЕННОГО АНАЛИЗА ======
 NEW_ANALYZER_ENABLED = os.getenv("NEW_ANALYZER_ENABLED", "False").lower() == "true"
