@@ -24,35 +24,47 @@ from ..config import PLANS, REFERRAL_PERCENT, REFERRAL_DAYS
 logger = logging.getLogger(__name__)
 PLAN_PRIORITY = {'premium': 3, 'pro': 2, 'trial': 1}
 
+# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ДАТ ====================
+
+def _ensure_utc(dt):
+    """Приводит datetime к UTC (исправляет timezone)."""
+    if dt is None:
+        return None
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        except ValueError:
+            dt = datetime.fromisoformat(dt)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt
+
 # ==================== SUBSCRIPTIONS ====================
 
 def get_subscription(user_id: int) -> Optional[Dict]:
-    """
-    Возвращает активную подписку пользователя (is_active=TRUE, end_date > NOW()).
-    Если несколько, выбирает с наивысшим приоритетом или самой поздней датой.
-    """
     return repo_get_active(user_id)
 
-def _activate_subscription_tx(cur, user_id: int, plan: str) -> None:
-    """Создаёт новую подписку и деактивирует все старые активные."""
-    days = PLANS[plan]['days']
+def _activate_subscription_tx(cur, user_id: int, plan: str, add_days: int = 0) -> None:
+    """
+    Создаёт новую подписку, деактивируя старые.
+    Если add_days > 0, то добавляет их к дате окончания (для переноса остатка trial).
+    """
+    days = PLANS[plan]['days'] + add_days
     cur.execute("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (user_id,))
     now = datetime.now(timezone.utc)
     end = now + timedelta(days=days)
     cur.execute("""INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active)
                    VALUES (%s, %s, 'active', %s, %s, TRUE)""", (user_id, plan, now, end))
 
-def activate_subscription(user_id: int, plan: str) -> None:
-    """Активирует платную подписку (используется для экспертного бонуса)."""
+def activate_subscription(user_id: int, plan: str, add_days: int = 0) -> None:
     with get_connection() as conn:
         with transaction(conn):
             cur = conn.cursor()
-            _activate_subscription_tx(cur, user_id, plan)
+            _activate_subscription_tx(cur, user_id, plan, add_days)
 
 def _extend_subscription_tx(cur, user_id: int, days: int, plan: str = 'pro') -> None:
-    """
-    Продлевает подписку. Если активной нет – деактивирует все старые и создаёт новую.
-    """
     cur.execute("""SELECT id, end_date, plan_type FROM subscriptions
                    WHERE user_id = %s AND is_active = TRUE AND end_date > NOW()
                    ORDER BY CASE plan_type WHEN 'premium' THEN 3 WHEN 'pro' THEN 2 WHEN 'trial' THEN 1 END DESC, end_date DESC LIMIT 1
@@ -69,74 +81,98 @@ def _extend_subscription_tx(cur, user_id: int, days: int, plan: str = 'pro') -> 
         new_end = current_end + timedelta(days=days)
         cur.execute("UPDATE subscriptions SET end_date = %s, plan_type = %s WHERE id = %s", (new_end, final_plan, current_id))
     else:
-        # Нет активной подписки — деактивируем все старые (на случай, если есть с is_active=TRUE но истекшие)
         cur.execute("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (user_id,))
         now = datetime.now(timezone.utc)
         end = now + timedelta(days=days)
         cur.execute("INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (%s, %s, 'active', %s, %s, TRUE)", (user_id, plan, now, end))
 
 def extend_subscription_days(user_id: int, days: int, plan: str = 'pro') -> None:
-    """Продлевает подписку на указанное количество дней (для оплат и достижений)."""
     with get_connection() as conn:
         with transaction(conn):
             cur = conn.cursor()
             _extend_subscription_tx(cur, user_id, days, plan)
 
 def has_active_subscription(user_id: int) -> bool:
-    """Проверяет, есть ли активная подписка (is_active и end_date > NOW)."""
     sub = get_subscription(user_id)
     return sub is not None
 
 def days_left(user_id: int) -> int:
-    """Возвращает количество полных дней до окончания активной подписки."""
     sub = get_subscription(user_id)
     if not sub:
         return 0
-    end_date = sub['end_date']
-    if isinstance(end_date, str):
-        try:
-            end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-        except ValueError:
-            end_date = datetime.fromisoformat(end_date)
-            end_date = end_date.replace(tzinfo=timezone.utc)
-    elif end_date.tzinfo is None:
-        end_date = end_date.replace(tzinfo=timezone.utc)
+    end_date = _ensure_utc(sub['end_date'])
+    if not end_date:
+        return 0
     delta = end_date - datetime.now(timezone.utc)
     return max(0, int(delta.total_seconds() // 86400))
 
 def get_trial_days_left(user_id: int) -> int:
-    """
-    Возвращает количество дней до окончания пробного периода,
-    только если активна именно trial-подписка.
-    """
-    sub = get_subscription(user_id)  # вернёт только активную (is_active и end_date > NOW)
+    sub = get_subscription(user_id)
     if not sub or sub.get('plan_type') != 'trial':
         return 0
-    end_date = sub['end_date']
-    if isinstance(end_date, str):
-        try:
-            end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-        except ValueError:
-            end_date = datetime.fromisoformat(end_date)
-            end_date = end_date.replace(tzinfo=timezone.utc)
-    elif end_date.tzinfo is None:
-        end_date = end_date.replace(tzinfo=timezone.utc)
+    end_date = _ensure_utc(sub['end_date'])
+    if not end_date:
+        return 0
     delta = end_date - datetime.now(timezone.utc)
     return max(0, int(delta.total_seconds() // 86400))
 
+# ===== ИСПРАВЛЕНИЕ №1: атомарная активация trial =====
 def activate_trial(user_id: int) -> bool:
-    """
-    Активирует пробный период на 3 дня.
-    Сначала деактивирует все старые активные подписки, затем создаёт новую trial.
-    """
     if has_trial_used(user_id):
         return False
-    if has_active_subscription(user_id):
-        return False
-    # Деактивируем все старые активные подписки, чтобы избежать конфликтов
-    execute_query("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (user_id,))
-    create_subscription(user_id, 'trial', 3)  # ровно 3 дня
-    return True
+
+    with get_connection() as conn:
+        with transaction(conn):
+            cur = conn.cursor()
+            # Блокируем пользователя
+            cur.execute("SELECT user_id FROM users WHERE user_id = %s FOR UPDATE", (user_id,))
+            if not cur.fetchone():
+                return False
+
+            # Повторные проверки внутри транзакции
+            cur.execute("SELECT 1 FROM subscriptions WHERE user_id = %s AND plan_type = 'trial' LIMIT 1", (user_id,))
+            if cur.fetchone():
+                return False
+
+            cur.execute("SELECT 1 FROM subscriptions WHERE user_id = %s AND is_active = TRUE AND end_date > NOW() LIMIT 1", (user_id,))
+            if cur.fetchone():
+                return False
+
+            cur.execute("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (user_id,))
+            now = datetime.now(timezone.utc)
+            end = now + timedelta(days=3)
+            cur.execute(
+                "INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) "
+                "VALUES (%s, 'trial', 'active', %s, %s, TRUE)",
+                (user_id, now, end)
+            )
+            return True
+
+# ===== НОВАЯ ФУНКЦИЯ: активация платной подписки с переносом остатка trial =====
+def upgrade_from_trial_to_paid(user_id: int, plan: str) -> None:
+    """
+    Активирует платную подписку, прибавляя оставшиеся дни trial к новому сроку.
+    """
+    sub = get_subscription(user_id)
+    remaining_trial_days = 0
+    if sub and sub.get('plan_type') == 'trial':
+        end_date = _ensure_utc(sub['end_date'])
+        if end_date:
+            delta = end_date - datetime.now(timezone.utc)
+            if delta.days > 0:
+                remaining_trial_days = delta.days
+    with get_connection() as conn:
+        with transaction(conn):
+            cur = conn.cursor()
+            cur.execute("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (user_id,))
+            days = PLANS[plan]['days'] + remaining_trial_days
+            now = datetime.now(timezone.utc)
+            end = now + timedelta(days=days)
+            cur.execute(
+                "INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) "
+                "VALUES (%s, %s, 'active', %s, %s, TRUE)",
+                (user_id, plan, now, end)
+            )
 
 def get_subscription_history(user_id: int, limit: int = 10) -> list:
     from ..repositories.core_repo import get_subscription_history
@@ -275,14 +311,16 @@ def get_referral_status(user_id: int) -> dict:
         "next_level": 5 - count if count < 5 else 0
     }
 
+# ===== ИСПРАВЛЕНИЕ: экспертный бонус с флагом =====
 def award_expert_bonus(user_id: int) -> bool:
-    status = get_referral_status(user_id)
-    if status["is_expert"] and not has_active_subscription(user_id):
-        activate_subscription(user_id, "pro")
-        return True
-    return False
+    """
+    Выдаёт экспертный бонус (Pro на 30 дней) только один раз.
+    Использует запись в user_achievements для idempotency.
+    """
+    from .user_service import unlock_and_reward  # избегаем циклического импорта
+    return unlock_and_reward(user_id, 'expert_bonus')
 
-# ==================== ACHIEVEMENTS ====================
+# ==================== ДОСТИЖЕНИЯ ====================
 
 ACHIEVEMENTS = {
     'first_analysis': {'name': 'Первый анализ', 'emoji': '🥉', 'desc': 'Сделайте первый анализ', 'reward': {'type': 'pro_days', 'value': 1}},
@@ -296,16 +334,21 @@ ACHIEVEMENTS = {
     'first_referral': {'name': 'Первый приглашённый', 'emoji': '🤝', 'desc': 'Пригласите 1 друга', 'reward': {'type': 'pro_days', 'value': 5}},
     'five_referrals': {'name': '5 приглашённых', 'emoji': '🌐', 'desc': 'Пригласите 5 друзей', 'reward': {'type': 'pro_days', 'value': 10}},
     'ten_referrals': {'name': '10 приглашённых', 'emoji': '🚀', 'desc': 'Пригласите 10 друзей', 'reward': {'type': 'pro_days', 'value': 30}},
+    'expert_bonus': {'name': 'Эксперт по рефералам', 'emoji': '🌟', 'desc': 'Пригласите 5 друзей и получите Pro на месяц!', 'reward': {'type': 'pro_days', 'value': 30}},
 }
 
+# ===== ИСПРАВЛЕНИЕ №2: атомарная выдача достижений =====
 def unlock_and_reward(user_id: int, achievement_id: str) -> bool:
     with get_connection() as conn:
         with transaction(conn):
             cur = conn.cursor()
-            cur.execute("SELECT 1 FROM user_achievements WHERE user_id = %s AND achievement_id = %s", (user_id, achievement_id))
-            if cur.fetchone():
+            cur.execute(
+                "INSERT INTO user_achievements (user_id, achievement_id) VALUES (%s, %s) ON CONFLICT (user_id, achievement_id) DO NOTHING",
+                (user_id, achievement_id)
+            )
+            if cur.rowcount == 0:
                 return False
-            cur.execute("INSERT INTO user_achievements (user_id, achievement_id) VALUES (%s, %s)", (user_id, achievement_id))
+
             reward = ACHIEVEMENTS.get(achievement_id, {}).get('reward')
             if reward and reward['type'] == 'pro_days':
                 _extend_subscription_tx(cur, user_id, reward['value'], 'pro')
@@ -336,4 +379,7 @@ def check_and_award_achievements(user_id: int, total_analyses: int, score: int, 
     for threshold, ach_id in ref_thresholds:
         if referrals_count >= threshold and unlock_and_reward(user_id, ach_id):
             new_achievements.append(ACHIEVEMENTS[ach_id])
+    # Проверяем экспертный бонус (если достигнуто 5 рефералов)
+    if referrals_count >= 5 and unlock_and_reward(user_id, 'expert_bonus'):
+        new_achievements.append(ACHIEVEMENTS['expert_bonus'])
     return new_achievements
