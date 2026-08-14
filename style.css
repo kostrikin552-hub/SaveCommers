@@ -319,9 +319,7 @@ select option {
 }
 
 /* ============================================ */
-/* ====== Стили для этапа 2 ====== */
-
-/* Главный результат */
+/* ====== СТИЛИ ДЛЯ ГЛАВНОГО РЕЗУЛЬТАТА ====== */
 .main-result-box {
     background: var(--card-bg);
     border-radius: var(--border-radius);
@@ -464,9 +462,7 @@ select option {
 }
 
 /* ============================================ */
-/* ====== Стили для этапа 3 ====== */
-
-/* Тренерское упражнение */
+/* ====== СТИЛИ ДЛЯ ТРЕНЕРСКОГО УПРАЖНЕНИЯ ====== */
 .exercise-box {
     background: rgba(253, 121, 168, 0.08);
     border: 1px solid rgba(253, 121, 168, 0.2);
@@ -486,7 +482,7 @@ select option {
     color: var(--text);
 }
 
-/* Блок PRO улучшенный */
+/* ====== УЛУЧШЕННЫЙ БЛОК PRO ====== */
 .pro-block {
     background: linear-gradient(135deg, rgba(108, 92, 231, 0.15), rgba(253, 121, 168, 0.10));
     border: 1px solid rgba(108, 92, 231, 0.3);
@@ -528,4 +524,33 @@ select option {
 .pro-btn:hover {
     transform: scale(1.02);
     box-shadow: 0 6px 30px rgba(108, 92, 231, 0.7);
+}
+
+/* ====== РЕКОМЕНДАЦИИ ====== */
+.recommendations-box {
+    margin: 16px 0;
+}
+.recommendations-title {
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+    color: #FD79A8;
+}
+.recommendation-card {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 20px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+    border-left: 3px solid #6C5CE7;
+}
+.rec-header {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.rec-body p {
+    margin: 4px 0;
+    font-size: 0.95rem;
+}
+.rec-body strong {
+    color: #fff;
 }
