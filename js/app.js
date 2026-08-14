@@ -222,6 +222,9 @@ class UIRenderer {
             return;
         }
 
+        // Определяем, активен ли улучшенный анализатор (по наличию поля needs_enhanced)
+        const isEnhanced = !!analysis.needs_enhanced;
+
         // ============================================================
         // 1. ГЛАВНЫЙ РЕЗУЛЬТАТ (Sales Health Score + риск)
         // ============================================================
@@ -340,7 +343,7 @@ class UIRenderer {
         }
 
         // ============================================================
-        // 6. АККОРДЕОН "ПОЛНЫЙ РАЗБОР" (с статусами)
+        // 6. АККОРДЕОН "ПОЛНЫЙ РАЗБОР"
         // ============================================================
         const accordion = document.createElement('div');
         accordion.className = 'accordion';
@@ -386,41 +389,48 @@ class UIRenderer {
             accordionBody.appendChild(statusDiv);
         }
 
-        // Остальные детали
-        if (analysis.negatives && analysis.negatives.length) {
-            const negBlock = document.createElement('div');
-            negBlock.className = 'detail-block';
-            const negTitle = document.createElement('div');
-            negTitle.className = 'detail-title';
-            negTitle.textContent = '❌ Что улучшить';
-            negBlock.appendChild(negTitle);
-            const list = document.createElement('ul');
-            analysis.negatives.forEach(n => {
-                const li = document.createElement('li');
-                li.textContent = n;
-                list.appendChild(li);
-            });
-            negBlock.appendChild(list);
-            accordionBody.appendChild(negBlock);
+        // ----- ОСТАЛЬНЫЕ ДЕТАЛИ (скрываем старые списки, если включён enhancer) -----
+        if (isEnhanced) {
+            // При включённом enhancer показываем только рекомендации и статусы, старые списки не показываем
+            // (их заменяют статусы и рекомендации)
+        } else {
+            // Старый режим — показываем полные списки positives и negatives
+            if (analysis.negatives && analysis.negatives.length) {
+                const negBlock = document.createElement('div');
+                negBlock.className = 'detail-block';
+                const negTitle = document.createElement('div');
+                negTitle.className = 'detail-title';
+                negTitle.textContent = '❌ Что улучшить';
+                negBlock.appendChild(negTitle);
+                const list = document.createElement('ul');
+                analysis.negatives.forEach(n => {
+                    const li = document.createElement('li');
+                    li.textContent = n;
+                    list.appendChild(li);
+                });
+                negBlock.appendChild(list);
+                accordionBody.appendChild(negBlock);
+            }
+
+            if (analysis.positives && analysis.positives.length) {
+                const posBlock = document.createElement('div');
+                posBlock.className = 'detail-block';
+                const posTitle = document.createElement('div');
+                posTitle.className = 'detail-title';
+                posTitle.textContent = '✅ Что хорошо';
+                posBlock.appendChild(posTitle);
+                const list = document.createElement('ul');
+                analysis.positives.forEach(p => {
+                    const li = document.createElement('li');
+                    li.textContent = p;
+                    list.appendChild(li);
+                });
+                posBlock.appendChild(list);
+                accordionBody.appendChild(posBlock);
+            }
         }
 
-        if (analysis.positives && analysis.positives.length) {
-            const posBlock = document.createElement('div');
-            posBlock.className = 'detail-block';
-            const posTitle = document.createElement('div');
-            posTitle.className = 'detail-title';
-            posTitle.textContent = '✅ Что хорошо';
-            posBlock.appendChild(posTitle);
-            const list = document.createElement('ul');
-            analysis.positives.forEach(p => {
-                const li = document.createElement('li');
-                li.textContent = p;
-                list.appendChild(li);
-            });
-            posBlock.appendChild(list);
-            accordionBody.appendChild(posBlock);
-        }
-
+        // Остальные блоки (уровень продавца, прогресс, серия, чек-лист, pro value, достижения, лимиты и т.д.) показываем всегда
         if (analysis.seller_level) {
             const levelBlock = document.createElement('div');
             levelBlock.className = 'detail-block';
