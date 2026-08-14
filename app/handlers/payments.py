@@ -1,22 +1,51 @@
 # file: app/handlers/payments.py
 import logging
 import os
+from html import escape
 from typing import Dict, Any
+from datetime import datetime, timezone
+from ..services.commerce_service import create_yookassa_payment
+from ..services.user_service import get_trial_days_left, activate_trial, get_subscription
 from ..db import tariffs_kb, execute_query
 from ..config import PLANS, FREE_ANALYSIS_LIMIT
 from ..utils import send_msg, answer_cb, send_invoice
 from ..utils.analytics import log_event
-from ..services.user_service import activate_trial, get_trial_days_left
+import requests
 
 logger = logging.getLogger(__name__)
 
-PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN")  # Токен от @BotFather
+PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN")
+
+# ==================== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ====================
+
+def _format_date(dt) -> str:
+    if not dt:
+        return "неизвестно"
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        except:
+            return dt
+    return dt.strftime("%d.%m.%Y")
+
+# ==================== ОБРАБОТЧИКИ ====================
 
 def handle_payment_message(update: Dict[str, Any]) -> None:
     chat_id = update["message"]["chat"]["id"]
     user_id = update["message"]["from"]["id"]
     bot_token = update.get("bot_token")
     log_event(user_id, 'paywall_shown')
+
+    # Проверяем текущую подписку
+    sub = get_subscription(user_id)
+    end_date_str = ""
+    if sub:
+        plan_type = sub.get('plan_type', '')
+        plan_name = PLANS.get(plan_type, {}).get('name', plan_type)
+        end_date = sub.get('end_date')
+        if end_date:
+            end_date_str = f"\n📅 Ваш тариф «{plan_name}» активен до {_format_date(end_date)}"
+
     text = (
         "💎 <b>Твой план роста:</b>\n\n"
         "🎁 <b>Бесплатный</b> -- 3 дня / 5 анализов\n Узнай свои слабые места.\n\n"
@@ -30,6 +59,9 @@ def handle_payment_message(update: Dict[str, Any]) -> None:
         "Всё из Pro + персональная стратегия продаж.\n\n"
         "🎁 <b>3 дня Pro бесплатно</b> — попробуй прямо сейчас"
     )
+    if end_date_str:
+        text += f"\n\n{end_date_str}"
+
     send_msg(chat_id, text, bot_token=bot_token, kb=tariffs_kb(user_id))
 
 def handle_payment_callback(update: Dict[str, Any]) -> None:
@@ -50,7 +82,7 @@ def handle_payment_callback(update: Dict[str, Any]) -> None:
         plan = "pro"
         title = "SaleFlow Pro"
         description = "Месяц безлимитного анализа диалогов и экспертных рекомендаций"
-        amount = 29900 if _is_promo_available(user_id) else 99000  # копейки
+        amount = 29900 if _is_promo_available(user_id) else 99000
         payload = f"pro_{user_id}"
     elif data == "tariff_premium":
         plan = "premium"
@@ -79,7 +111,6 @@ def handle_payment_callback(update: Dict[str, Any]) -> None:
         answer_cb(query["id"], bot_token, "Ошибка: провайдер платежей не настроен")
         return
 
-    # Сохраняем платёж в БД со статусом 'pending' и запоминаем payload
     execute_query(
         "INSERT INTO payments (user_id, plan_type, amount, status, payment_id) VALUES (%s, %s, %s, 'pending', %s)",
         (user_id, plan, amount, payload)
@@ -108,8 +139,6 @@ def handle_payment_callback(update: Dict[str, Any]) -> None:
         execute_query("UPDATE payments SET status = 'failed' WHERE payment_id = %s", (payload,))
 
 def _is_promo_available(user_id: int) -> bool:
-    """Проверяет, доступна ли акция для пользователя (первые 100 и не покупал ранее)."""
-    # Считаем количество успешных платежей за Pro
     row = execute_query(
         "SELECT COUNT(*) FROM payments WHERE plan_type = 'pro' AND status = 'succeeded'",
         fetch_one=True
@@ -117,7 +146,6 @@ def _is_promo_available(user_id: int) -> bool:
     total_pro = row['count'] if row else 0
     if total_pro >= 100:
         return False
-    # Проверяем, покупал ли пользователь Pro ранее
     row = execute_query(
         "SELECT 1 FROM payments WHERE user_id = %s AND plan_type = 'pro' AND status = 'succeeded'",
         (user_id,), fetch_one=True
@@ -125,29 +153,23 @@ def _is_promo_available(user_id: int) -> bool:
     return row is None
 
 def handle_pre_checkout_query(update: Dict[str, Any]) -> None:
-    """Обработчик pre_checkout_query: подтверждаем заказ."""
     query = update["pre_checkout_query"]
     from_user = query.get("from", {})
     user_id = from_user.get("id")
     payload = query.get("payload", "")
     bot_token = update.get("bot_token") or os.getenv('BOT_TOKEN')
 
-    # Проверяем, что payload соответствует ожидаемому и платеж существует
-    # Можно дополнительно проверить статус платежа в БД
     payment = execute_query(
         "SELECT status FROM payments WHERE payment_id = %s AND user_id = %s",
         (payload, user_id), fetch_one=True
     )
     if not payment or payment['status'] not in ('pending', 'processing'):
-        # Отклоняем, если платеж не найден или уже обработан
         _answer_pre_checkout(query["id"], bot_token, ok=False, error_message="Недействительный платёж")
         return
 
-    # Подтверждаем
     _answer_pre_checkout(query["id"], bot_token, ok=True)
 
 def _answer_pre_checkout(pre_checkout_id: str, bot_token: str, ok: bool, error_message: str = None) -> bool:
-    """Отвечает на pre_checkout_query."""
     url = f"https://api.telegram.org/bot{bot_token}/answerPreCheckoutQuery"
     payload = {"pre_checkout_query_id": pre_checkout_id, "ok": ok}
     if error_message:
@@ -160,7 +182,6 @@ def _answer_pre_checkout(pre_checkout_id: str, bot_token: str, ok: bool, error_m
         return False
 
 def handle_successful_payment(update: Dict[str, Any]) -> None:
-    """Обработчик successful_payment: активация подписки."""
     message = update["message"]
     user_id = message.get("from", {}).get("id")
     payment = message.get("successful_payment", {})
@@ -172,13 +193,11 @@ def handle_successful_payment(update: Dict[str, Any]) -> None:
         logger.error("Missing payload or user_id in successful_payment")
         return
 
-    # Обновляем статус платежа в БД
     execute_query(
         "UPDATE payments SET status = 'succeeded' WHERE payment_id = %s AND user_id = %s",
         (payload, user_id)
     )
 
-    # Извлекаем план из payload (формат: "pro_123" или "premium_123")
     parts = payload.split('_')
     if len(parts) != 2:
         logger.error(f"Invalid payload format: {payload}")
@@ -188,12 +207,10 @@ def handle_successful_payment(update: Dict[str, Any]) -> None:
         logger.error(f"Unknown plan from payload: {plan}")
         return
 
-    # Активируем подписку
     from ..services.user_service import extend_subscription_days
     days = PLANS[plan]['days']
     extend_subscription_days(user_id, days, plan)
 
-    # Отправляем подтверждение
     send_msg(
         user_id,
         f"🎉 Оплата прошла успешно! Тариф «{PLANS[plan]['name']}» активирован на {days} дней.\n"
