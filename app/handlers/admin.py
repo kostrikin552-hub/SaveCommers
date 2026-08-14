@@ -1,10 +1,11 @@
 # file: app/handlers/admin.py
 import logging
 from typing import Dict, Any
-from ..db import db_fetchall, execute_query
+from datetime import datetime, timedelta, timezone
+from ..db import db_fetchall, execute_query, get_connection, transaction
 from ..config import ADMIN_ID
 from ..utils import send_msg, answer_cb
-from ..services.user_service import approve_withdraw, get_withdraw_request
+from ..services.user_service import approve_withdraw, get_withdraw_request, activate_subscription, get_subscription
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +17,53 @@ def handle_admin_message(update: Dict[str, Any]) -> None:
     if user_id != ADMIN_ID:
         send_msg(chat_id, "⛔ У вас нет прав администратора.", bot_token=bot_token)
         return
-    text = message.get("text", "")
+    text = message.get("text", "").strip()
     if text.startswith("/admin stats"):
         stats = _get_extended_stats()
         answer = _format_stats(stats)
         send_msg(chat_id, answer, bot_token=bot_token, disable_preview=True)
+    elif text.startswith("/admin grant"):
+        parts = text.split()
+        if len(parts) != 4:
+            send_msg(chat_id, "❌ Использование: /admin grant <user_id> <plan> <days>\nПример: /admin grant 123456 pro 30", bot_token=bot_token)
+            return
+        try:
+            target_user = int(parts[1])
+            plan = parts[2].lower()
+            days = int(parts[3])
+            if plan not in ['pro', 'premium']:
+                send_msg(chat_id, "❌ План должен быть pro или premium", bot_token=bot_token)
+                return
+            if days <= 0:
+                send_msg(chat_id, "❌ Количество дней должно быть положительным", bot_token=bot_token)
+                return
+            with get_connection() as conn:
+                with transaction(conn):
+                    cur = conn.cursor()
+                    cur.execute("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (target_user,))
+                    now = datetime.now(timezone.utc)
+                    end = now + timedelta(days=days)
+                    cur.execute(
+                        "INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) "
+                        "VALUES (%s, %s, 'active', %s, %s, TRUE)",
+                        (target_user, plan, now, end)
+                    )
+            send_msg(chat_id, f"✅ Подписка {plan} на {days} дней активирована пользователю {target_user}", bot_token=bot_token)
+        except ValueError:
+            send_msg(chat_id, "❌ Неверный формат. Использование: /admin grant <user_id> <plan> <days>", bot_token=bot_token)
+    elif text.startswith("/admin revoke"):
+        parts = text.split()
+        if len(parts) != 2:
+            send_msg(chat_id, "❌ Использование: /admin revoke <user_id>", bot_token=bot_token)
+            return
+        try:
+            target_user = int(parts[1])
+            execute_query("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (target_user,))
+            send_msg(chat_id, f"✅ Все активные подписки пользователя {target_user} деактивированы", bot_token=bot_token)
+        except ValueError:
+            send_msg(chat_id, "❌ Неверный формат ID пользователя", bot_token=bot_token)
     else:
-        send_msg(chat_id, "Доступные команды: /admin stats", bot_token=bot_token)
+        send_msg(chat_id, "Доступные команды:\n/admin stats - статистика\n/admin grant <user_id> <plan> <days> - активация подписки\n/admin revoke <user_id> - деактивация всех подписок", bot_token=bot_token)
 
 def _get_extended_stats() -> dict:
     """Собирает расширенную статистику с динамикой за день/неделю/месяц."""
@@ -104,11 +145,13 @@ def _get_extended_stats() -> dict:
             cur_val = cur_val['value'] if cur_val and cur_val['value'] is not None else 0
 
             # Предыдущий период (от -2*interval до -interval)
+            # Вычисляем количество дней для интервала
+            days = int(interval.split()[0])
             prev_query = f"""
                 SELECT {field} as value
                 FROM {table}
-                WHERE {date_field} > {now} - INTERVAL '{2 * int(interval.split()[0])} days'
-                  AND {date_field} <= {now} - INTERVAL '{interval}'
+                WHERE {date_field} > {now} - INTERVAL '{2 * days} days'
+                  AND {date_field} <= {now} - INTERVAL '{days} days'
                 {('AND ' + condition) if condition else ''}
             """
             prev_val = execute_query(prev_query, fetch_one=True)
