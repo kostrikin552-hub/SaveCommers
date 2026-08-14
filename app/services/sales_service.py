@@ -22,7 +22,7 @@ from ..repositories.stats_repo import (
     get_first_score,
     get_streak
 )
-from ..config import FREE_ANALYSIS_LIMIT
+from ..config import FREE_ANALYSIS_LIMIT, NEW_ANALYZER_ENABLED
 from ..analyzer import analyze_dialog_with_timeout
 from ..services.user_service import has_active_subscription, check_and_award_achievements
 from ..services.user_service import get_referral_stats, get_subscription
@@ -56,7 +56,6 @@ def reserve_free_analysis(user_id: int, idempotency_key: Optional[str] = None):
             used = usage['free_analyses_used'] if usage else 0
             if used >= FREE_ANALYSIS_LIMIT:
                 return False, "Превышен лимит бесплатных анализов"
-            # Не увеличиваем счётчик здесь, только резервируем
             if idempotency_key:
                 cur.execute("""INSERT INTO analysis_requests (user_id, idempotency_key, status, created_at, processing_started_at)
                                VALUES (%s, %s, 'processing', NOW(), NOW())""", (user_id, idempotency_key))
@@ -68,7 +67,6 @@ def rollback_free_analysis(user_id: int, idempotency_key: Optional[str] = None) 
         with transaction(conn):
             if idempotency_key:
                 execute_query("DELETE FROM analysis_requests WHERE user_id = %s AND idempotency_key = %s AND status = 'processing'", (user_id, idempotency_key))
-            # Уменьшаем счётчик только если он был увеличен
             execute_query("UPDATE user_usage SET free_analyses_used = GREATEST(free_analyses_used - 1, 0) WHERE user_id = %s", (user_id,))
 
 def perform_analysis(user_id: int, dialog: str, idempotency_key: Optional[str] = None) -> Dict[str, Any]:
@@ -84,6 +82,16 @@ def perform_analysis(user_id: int, dialog: str, idempotency_key: Optional[str] =
             "hasSub": False
         }
 
+    # ===== НОВЫЙ СЛОЙ УЛУЧШЕНИЯ =====
+    if NEW_ANALYZER_ENABLED:
+        from ..analysis_enhancer import enhance_analysis
+        try:
+            result = enhance_analysis(result, dialog)
+            logger.info(f"Analysis enhanced for user {user_id}")
+        except Exception as e:
+            logger.exception(f"Enhancement failed, using original result: {e}")
+    # =================================
+
     positives = '; '.join(result.get('positives', []))[:5000]
     negatives = '; '.join(result.get('negatives', []))[:5000]
 
@@ -91,7 +99,7 @@ def perform_analysis(user_id: int, dialog: str, idempotency_key: Optional[str] =
     lost_sale_risk_level = result.get('money_loss', {}).get('level', 'low')
     sales_health_score = result.get('sales_health_score', 0)
     deal_stage = result.get('deal_stage', {}).get('stage', '')
-    seller_level = result.get('seller_level', {}).get('level', '')
+    seller_level = result.get('seller_level', {}).get('label', '')
 
     save_analysis_history(
         user_id,
@@ -115,7 +123,6 @@ def perform_analysis(user_id: int, dialog: str, idempotency_key: Optional[str] =
     if not has_sub:
         result['drafts']['expert'] = ""
 
-    # Списание бесплатного анализа только после успешного выполнения
     if not has_sub:
         increment_free_analyses(user_id)
 
@@ -136,7 +143,12 @@ def perform_analysis(user_id: int, dialog: str, idempotency_key: Optional[str] =
         "first_score": first_score,
     }
 
-    # === Прогресс, серия, чек-лист ===
+    if NEW_ANALYZER_ENABLED:
+        if result.get('recommendations'):
+            response['recommendations'] = result['recommendations']
+        response['needs_enhanced'] = result.get('needs_enhanced')
+        response['next_step_enhanced'] = result.get('next_step_enhanced')
+        response['objection_enhanced'] = result.get('objection_enhanced')
 
     # Прогресс
     history = get_analysis_history(user_id, limit=None)
@@ -160,11 +172,9 @@ def perform_analysis(user_id: int, dialog: str, idempotency_key: Optional[str] =
             "total_analyses": len(history)
         }
 
-    # Серия
     streak = get_streak(user_id)
     response["streak"] = streak
 
-    # Чек-лист
     checklist_items = []
     neg_list = result.get('negatives', [])
     if any("потребность" in n.lower() for n in neg_list):
@@ -181,7 +191,6 @@ def perform_analysis(user_id: int, dialog: str, idempotency_key: Optional[str] =
         checklist_items.append("✅ Все ключевые моменты соблюдены!")
     response["checklist"] = checklist_items
 
-    # Лимиты
     left = max(0, FREE_ANALYSIS_LIMIT - free_used)
     response["limits"] = {
         "used": free_used,
@@ -190,7 +199,6 @@ def perform_analysis(user_id: int, dialog: str, idempotency_key: Optional[str] =
         "message": f"🔥 Осталось {left} бесплатных анализов\nПосле окончания:\n✓ история сохранится\n✓ сможете анализировать новые сделки\n✓ получите полный контроль продаж"
     }
 
-    # Upgrade / Paywall
     if not has_sub:
         main_errors = result.get('negatives', [])[:3]
         error_list = "\n".join([f"• {err}" for err in main_errors]) if main_errors else "• Ошибки в продажах"
@@ -226,7 +234,6 @@ def perform_analysis(user_id: int, dialog: str, idempotency_key: Optional[str] =
                 "callback": "tariff_premium"
             }
 
-    # Дополнительные поля этапа 6
     response["pro_value"] = {
         "title": "Почему продавцы используют Pro",
         "items": [
