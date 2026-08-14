@@ -97,22 +97,36 @@ def perform_analysis(user_id: int, dialog: str, idempotency_key: Optional[str] =
 
     main_error_text = result.get('main_error', {}).get('title', '') if result.get('main_error') else ''
     lost_sale_risk_level = result.get('money_loss', {}).get('level', 'low')
+
+    # === ИЗВЛЕКАЕМ НОВЫЕ ПОЛЯ ===
     sales_health_score = result.get('sales_health_score', 0)
+    if isinstance(sales_health_score, str):
+        try:
+            sales_health_score = int(sales_health_score)
+        except:
+            sales_health_score = 0
+
     deal_stage = result.get('deal_stage', {}).get('stage', '')
-    seller_level = result.get('seller_level', {}).get('label', '')
+    seller_level_obj = result.get('seller_level', {})
+    if isinstance(seller_level_obj, dict):
+        seller_level = seller_level_obj.get('label', '')
+    else:
+        seller_level = str(seller_level_obj) if seller_level_obj else ''
+    # ==============================
 
     save_analysis_history(
         user_id,
-        result['score'],
+        result['score'],  # старый score (для совместимости)
         len(result.get('positives', [])),
         positives,
         negatives,
         main_error=main_error_text,
         lost_sale_risk_level=lost_sale_risk_level,
-        sales_health_score=sales_health_score,
+        sales_health_score=sales_health_score,  # НОВОЕ ЗНАЧЕНИЕ
         deal_stage=deal_stage,
-        seller_level=seller_level
+        seller_level=seller_level            # НОВОЕ ЗНАЧЕНИЕ
     )
+
     update_user_weaknesses(user_id, result.get('negatives', []))
     total_analyses = get_analysis_count(user_id)
     free_used = get_user_usage(user_id)
