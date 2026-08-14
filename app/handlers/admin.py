@@ -112,6 +112,16 @@ def _get_extended_stats() -> dict:
         fetch_one=True
     )['count']
 
+    # ----- ЗАЯВКИ НА ВЫВОД -----
+    pending_withdrawals = execute_query(
+        "SELECT COUNT(*) FROM withdraw_requests WHERE status = 'pending'",
+        fetch_one=True
+    )['count']
+    completed_withdrawals = execute_query(
+        "SELECT COUNT(*) FROM withdraw_requests WHERE status = 'completed'",
+        fetch_one=True
+    )['count']
+
     max_streak = execute_query(
         "SELECT MAX(streak) FROM ("
         "SELECT COUNT(DISTINCT DATE(created_at)) as streak "
@@ -145,7 +155,6 @@ def _get_extended_stats() -> dict:
             cur_val = cur_val['value'] if cur_val and cur_val['value'] is not None else 0
 
             # Предыдущий период (от -2*interval до -interval)
-            # Вычисляем количество дней для интервала
             days = int(interval.split()[0])
             prev_query = f"""
                 SELECT {field} as value
@@ -187,6 +196,8 @@ def _get_extended_stats() -> dict:
         'revenue_delta': revenue_delta,
         'successful_payments': successful_payments,
         'pending_payments': pending_payments,
+        'pending_withdrawals': pending_withdrawals,
+        'completed_withdrawals': completed_withdrawals,
         'max_streak': max_streak_val,
     }
 
@@ -228,10 +239,13 @@ def _format_stats(stats: dict) -> str:
     lines.append(f"   динамика за неделю: {fmt_change(stats['revenue_delta'], 'week')}")
     lines.append(f"   динамика за месяц: {fmt_change(stats['revenue_delta'], 'month')}")
 
-    # Платежи
+    # Платежи и заявки на вывод
     lines.append(f"\n💳 <b>Платежи:</b>")
     lines.append(f"  Успешных: {stats['successful_payments']}")
     lines.append(f"  Ожидающих: {stats['pending_payments']}")
+    lines.append(f"\n💸 <b>Заявки на вывод:</b>")
+    lines.append(f"  Ожидают: {stats['pending_withdrawals']}")
+    lines.append(f"  Выполнено: {stats['completed_withdrawals']}")
 
     # Серия
     lines.append(f"\n🔥 <b>Макс. серия:</b> {stats['max_streak']} дней")
