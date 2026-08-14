@@ -1,3 +1,4 @@
+# file: app/handlers/user.py
 import logging
 from html import escape
 from typing import Dict, Any
@@ -410,3 +411,48 @@ def handle_company_callback(update: Dict[str, Any]) -> None:
             send_msg(chat_id, "У вас нет компании.", bot_token=bot_token)
     else:
         answer_cb(query["id"], bot_token, "Неизвестное действие")
+
+# ==================== CHECK DB (ДОБАВЛЕНО) ====================
+
+def handle_check_db(update: Dict[str, Any]) -> None:
+    """Команда /check_db — показывает последние анализы пользователя из БД."""
+    message = update.get("message", {})
+    chat_id = message.get("chat", {}).get("id")
+    user_id = message.get("from", {}).get("id")
+    bot_token = update.get("bot_token")
+
+    rows = execute_query(
+        """SELECT id, score, sales_health_score, seller_level, created_at
+           FROM analysis_history
+           WHERE user_id = %s
+           ORDER BY created_at DESC
+           LIMIT 5""",
+        (user_id,), fetch_all=True
+    )
+
+    if not rows:
+        send_msg(chat_id, "📭 У вас пока нет анализов.", bot_token=bot_token)
+        return
+
+    text = "📊 <b>Последние 5 анализов:</b>\n\n"
+    for i, row in enumerate(rows, 1):
+        health = row.get('sales_health_score')
+        health_display = f"{health}/100" if health is not None else "❌ NULL"
+        level = row.get('seller_level') or "❌ NULL"
+        text += (
+            f"{i}. Score: {row['score']}/100 | "
+            f"Sales Health: {health_display} | "
+            f"Уровень: {level}\n"
+            f"   {row['created_at']}\n"
+        )
+    # Добавляем информацию о среднем
+    avg_row = execute_query(
+        "SELECT AVG(sales_health_score) as avg_health FROM analysis_history WHERE user_id = %s",
+        (user_id,), fetch_one=True
+    )
+    if avg_row and avg_row['avg_health']:
+        text += f"\n📈 Средний Sales Health: {avg_row['avg_health']:.1f}/100"
+    else:
+        text += "\n⚠️ Нет данных с Sales Health (все NULL или 0)"
+
+    send_msg(chat_id, text, bot_token=bot_token, disable_preview=True)
