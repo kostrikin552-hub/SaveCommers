@@ -331,4 +331,87 @@ def enhance_analysis(original_result: Dict[str, Any], dialog_text: str) -> Dict[
     # 6. Переопределяем уровень продавца на основе нового health
     enhanced['seller_level'] = get_seller_level(new_health)
 
+    # ====== 7. СИНХРОНИЗАЦИЯ СО СТАРЫМИ ПОЛЯМИ ======
+    # Переопределяем main_error на основе новых статусов (приоритет: потребность > возражения > следующий шаг)
+    if needs_enhanced['status'] == FAILED:
+        enhanced['main_error'] = {
+            "title": "Не выявлена потребность клиента",
+            "explanation": "Клиент сразу спросил цену или задал вопрос, но менеджер не выяснил задачу. Это переводит разговор в сравнение цен и снижает вероятность сделки."
+        }
+    elif objection_enhanced['status'] == FAILED:
+        enhanced['main_error'] = {
+            "title": "Возражение клиента проигнорировано",
+            "explanation": "Клиент возразил, но менеджер не выяснил причину и не предложил решение."
+        }
+    elif next_step_enhanced['status'] == FAILED:
+        enhanced['main_error'] = {
+            "title": "Не обозначен следующий шаг",
+            "explanation": "Диалог завершился без чёткого плана действий, клиент не знает, что делать дальше."
+        }
+    else:
+        # Если всё хорошо, убираем ошибку
+        enhanced['main_error'] = None
+
+    # Переопределяем money_loss на основе нового sales_health_score
+    if new_health < 40:
+        enhanced['money_loss'] = {
+            "level": "high",
+            "title": "Высокий риск потери сделки",
+            "reason": "Критические ошибки в диалоге: потребность не выявлена, возражения не обработаны.",
+            "action": "Начните с выявления потребности клиента."
+        }
+    elif new_health < 70:
+        enhanced['money_loss'] = {
+            "level": "medium",
+            "title": "Средний риск потери сделки",
+            "reason": "Есть области для улучшения: работа с возражениями или следующий шаг.",
+            "action": "Уточните причину возражений и обозначьте следующий шаг."
+        }
+    else:
+        enhanced['money_loss'] = {
+            "level": "low",
+            "title": "Низкий риск потери сделки",
+            "reason": "Диалог прошёл хорошо, клиент проявил интерес.",
+            "action": "Продолжайте в том же духе."
+        }
+
+    # Переопределяем lost_deals_reasons (первые 3 причины на основе статусов)
+    lost_reasons = []
+    if needs_enhanced['status'] == FAILED:
+        lost_reasons.append({
+            "title": "Не выявлена потребность клиента",
+            "impact": "high",
+            "explanation": "Клиент ушёл без понимания ценности, потому что менеджер не задал уточняющих вопросов."
+        })
+    if objection_enhanced['status'] == FAILED:
+        lost_reasons.append({
+            "title": "Возражение клиента проигнорировано",
+            "impact": "high",
+            "explanation": "Сомнение клиента осталось без ответа, он ушёл с неуверенностью."
+        })
+    if next_step_enhanced['status'] == FAILED:
+        lost_reasons.append({
+            "title": "Нет следующего шага после общения",
+            "impact": "medium",
+            "explanation": "Диалог оборвался, клиент не знает, что делать дальше."
+        })
+    if not has_value:
+        lost_reasons.append({
+            "title": "Не показана ценность продукта",
+            "impact": "medium",
+            "explanation": "Клиент не понял выгоду, поэтому сравнивает только цены."
+        })
+    # Ограничим до 3
+    enhanced['lost_deals_reasons'] = lost_reasons[:3]
+
+    # Переопределяем next_best_action (если есть main_error, то его действие)
+    if enhanced.get('main_error'):
+        # Берём рекомендацию из списка, если есть
+        if enhanced['recommendations']:
+            enhanced['next_best_action'] = enhanced['recommendations'][0].get('advice', 'Задайте уточняющий вопрос клиенту.')
+        else:
+            enhanced['next_best_action'] = 'Задайте уточняющий вопрос клиенту.'
+    else:
+        enhanced['next_best_action'] = 'Отлично! Продолжайте в том же духе. Уточните у клиента, какие ещё вопросы у него есть, и подтвердите готовность к сотрудничеству.'
+
     return enhanced
