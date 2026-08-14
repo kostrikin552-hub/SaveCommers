@@ -263,7 +263,7 @@ def handle_support_callback(update: Dict[str, Any]) -> None:
     bot_token = update.get("bot_token")
     answer_cb(query["id"], bot_token, "Напишите нам сообщение в этот чат")
 
-# ==================== REFERRALS ====================
+# ==================== REFERRALS & WITHDRAW ====================
 
 def process_referral_start(update: Dict[str, Any], param: str) -> None:
     message = update.get("message", {})
@@ -290,20 +290,49 @@ def handle_referral_message(update: Dict[str, Any]) -> None:
     status = get_referral_status(user_id)
     status_text = "🏆 Эксперт" if status["is_expert"] else f"🟡 До эксперта осталось {status['next_level']} приглашений"
 
+    # Дополнительная статистика (приглашённые, которые оплатили)
+    paid_refs = execute_query(
+        """SELECT COUNT(DISTINCT r.referred_id) 
+           FROM referrals r
+           JOIN payments p ON p.user_id = r.referred_id AND p.status = 'succeeded'
+           WHERE r.referrer_id = %s""",
+        (user_id,), fetch_one=True
+    )
+    paid_count = paid_refs['count'] if paid_refs else 0
+
+    total_payments = execute_query(
+        """SELECT COALESCE(SUM(p.amount), 0) / 100.0 as total 
+           FROM referrals r
+           JOIN payments p ON p.user_id = r.referred_id AND p.status = 'succeeded'
+           WHERE r.referrer_id = %s""",
+        (user_id,), fetch_one=True
+    )
+    total_paid = total_payments['total'] if total_payments else 0
+
+    active_subs = execute_query(
+        """SELECT COUNT(DISTINCT r.referred_id) 
+           FROM referrals r
+           JOIN subscriptions s ON s.user_id = r.referred_id AND s.is_active = TRUE AND s.end_date > NOW()
+           WHERE r.referrer_id = %s""",
+        (user_id,), fetch_one=True
+    )
+    active_count = active_subs['count'] if active_subs else 0
+
     text = (
         f"💰 <b>Мой баланс</b>\n\n"
         f"Ваш код: <code>{escape(code)}</code>\n"
-        f"Приглашено друзей: {ref_count}\n"
-        f"Заработано бонусов: {bonus / 100:.2f} ₽\n"
+        f"Приглашено друзей (всего): {ref_count}\n"
+        f"Из них оплатили: {paid_count}\n"
+        f"Активных подписок: {active_count}\n"
+        f"Общая сумма платежей: {total_paid:.2f} ₽\n"
+        f"Ваша комиссия (20%): {bonus / 100:.2f} ₽\n"
         f"Баланс для вывода: {balance / 100:.2f} ₽\n"
         f"Статус: {status_text}\n\n"
         "Пригласи друзей — получи статус эксперта и бесплатный Pro на месяц!"
     )
 
-    kb = None
-    if balance >= 50000:
-        kb = {"inline_keyboard": [[{"text": "💸 Вывести средства", "callback_data": "withdraw_start"}]]}
-
+    # КНОПКА ВЫВОДА ВСЕГДА
+    kb = {"inline_keyboard": [[{"text": "💸 Вывести средства", "callback_data": "withdraw_start"}]]}
     send_msg(chat_id, text, bot_token=bot_token, kb=kb)
 
 def handle_withdraw_callback(update: Dict[str, Any]) -> None:
@@ -315,8 +344,14 @@ def handle_withdraw_callback(update: Dict[str, Any]) -> None:
 
     if data == "withdraw_start":
         balance = get_balance(user_id)
-        if balance < 50000:
-            answer_cb(query["id"], bot_token, "❌ Для вывода необходимо накопить минимум 500 ₽")
+        # Проверяем минимальную сумму ДО начала сбора данных
+        if balance < 50000:  # 500 рублей в копейках
+            answer_cb(query["id"], bot_token, "❌ Минимальная сумма вывода 500 ₽")
+            send_msg(
+                chat_id,
+                f"❌ Минимальная сумма вывода <b>500 ₽</b>.\nВаш баланс: {balance / 100:.2f} ₽\nПродолжайте приглашать друзей, чтобы накопить нужную сумму!",
+                bot_token=bot_token
+            )
             return
         set_state(user_id, "awaiting_withdraw_method", {})
         answer_cb(query["id"], bot_token, "Введите номер телефона или карты для вывода:")
