@@ -1,4 +1,3 @@
-# file: app/repositories/stats_repo.py
 from ..db import execute_query, get_connection, transaction
 from typing import Optional, Dict, List
 from datetime import datetime, timedelta, timezone
@@ -63,6 +62,7 @@ def get_first_score(user_id: int) -> Optional[int]:
     return row['score'] if row else None
 
 def get_user_progress(user_id: int) -> dict:
+    """Возвращает прогресс пользователя: первый/последний балл, изменение, количество анализов, средний балл и зону улучшения."""
     first_row = execute_query(
         "SELECT score FROM analysis_history WHERE user_id = %s ORDER BY created_at ASC LIMIT 1",
         (user_id,), fetch_one=True
@@ -71,19 +71,32 @@ def get_user_progress(user_id: int) -> dict:
         "SELECT score FROM analysis_history WHERE user_id = %s ORDER BY created_at DESC LIMIT 1",
         (user_id,), fetch_one=True
     )
+    count_row = execute_query(
+        "SELECT COUNT(*) as cnt, AVG(score) as avg FROM analysis_history WHERE user_id = %s",
+        (user_id,), fetch_one=True
+    )
     first_score = first_row['score'] if first_row else None
     last_score = last_row['score'] if last_row else None
-    change = (last_score - first_score) if (first_score is not None and last_score is not None) else 0
+    total_analyses = count_row['cnt'] if count_row else 0
+    avg_score = int(count_row['avg']) if count_row and count_row['avg'] is not None else 0
+
+    change = 0
+    if first_score is not None and last_score is not None:
+        change = last_score - first_score
+
     errors = execute_query(
         "SELECT main_error, COUNT(*) as cnt FROM analysis_history WHERE user_id = %s AND main_error IS NOT NULL GROUP BY main_error ORDER BY cnt DESC LIMIT 1",
         (user_id,), fetch_one=True
     )
     improvement_area = errors['main_error'] if errors else None
+
     return {
         "first_score": first_score,
         "last_score": last_score,
         "change": change,
-        "improvement_area": improvement_area
+        "improvement_area": improvement_area,
+        "total_analyses": total_analyses,
+        "avg_score": avg_score
     }
 
 def get_streak(user_id: int) -> int:
