@@ -27,9 +27,14 @@ PLAN_PRIORITY = {'premium': 3, 'pro': 2, 'trial': 1}
 # ==================== SUBSCRIPTIONS ====================
 
 def get_subscription(user_id: int) -> Optional[Dict]:
+    """
+    Возвращает активную подписку пользователя (is_active=TRUE, end_date > NOW()).
+    Если несколько, выбирает с наивысшим приоритетом или самой поздней датой.
+    """
     return repo_get_active(user_id)
 
 def _activate_subscription_tx(cur, user_id: int, plan: str) -> None:
+    """Создаёт новую подписку и деактивирует все старые активные."""
     days = PLANS[plan]['days']
     cur.execute("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (user_id,))
     now = datetime.now(timezone.utc)
@@ -38,6 +43,7 @@ def _activate_subscription_tx(cur, user_id: int, plan: str) -> None:
                    VALUES (%s, %s, 'active', %s, %s, TRUE)""", (user_id, plan, now, end))
 
 def activate_subscription(user_id: int, plan: str) -> None:
+    """Активирует платную подписку (используется для экспертного бонуса)."""
     with get_connection() as conn:
         with transaction(conn):
             cur = conn.cursor()
@@ -45,7 +51,7 @@ def activate_subscription(user_id: int, plan: str) -> None:
 
 def _extend_subscription_tx(cur, user_id: int, days: int, plan: str = 'pro') -> None:
     """
-    Продлевает подписку. Если активной подписки нет – деактивирует все старые и создаёт новую.
+    Продлевает подписку. Если активной нет – деактивирует все старые и создаёт новую.
     """
     cur.execute("""SELECT id, end_date, plan_type FROM subscriptions
                    WHERE user_id = %s AND is_active = TRUE AND end_date > NOW()
@@ -70,16 +76,19 @@ def _extend_subscription_tx(cur, user_id: int, days: int, plan: str = 'pro') -> 
         cur.execute("INSERT INTO subscriptions (user_id, plan_type, status, start_date, end_date, is_active) VALUES (%s, %s, 'active', %s, %s, TRUE)", (user_id, plan, now, end))
 
 def extend_subscription_days(user_id: int, days: int, plan: str = 'pro') -> None:
+    """Продлевает подписку на указанное количество дней (для оплат и достижений)."""
     with get_connection() as conn:
         with transaction(conn):
             cur = conn.cursor()
             _extend_subscription_tx(cur, user_id, days, plan)
 
 def has_active_subscription(user_id: int) -> bool:
+    """Проверяет, есть ли активная подписка (is_active и end_date > NOW)."""
     sub = get_subscription(user_id)
     return sub is not None
 
 def days_left(user_id: int) -> int:
+    """Возвращает количество полных дней до окончания активной подписки."""
     sub = get_subscription(user_id)
     if not sub:
         return 0
@@ -96,7 +105,11 @@ def days_left(user_id: int) -> int:
     return max(0, int(delta.total_seconds() // 86400))
 
 def get_trial_days_left(user_id: int) -> int:
-    sub = get_subscription(user_id)
+    """
+    Возвращает количество дней до окончания пробного периода,
+    только если активна именно trial-подписка.
+    """
+    sub = get_subscription(user_id)  # вернёт только активную (is_active и end_date > NOW)
     if not sub or sub.get('plan_type') != 'trial':
         return 0
     end_date = sub['end_date']
@@ -112,11 +125,15 @@ def get_trial_days_left(user_id: int) -> int:
     return max(0, int(delta.total_seconds() // 86400))
 
 def activate_trial(user_id: int) -> bool:
+    """
+    Активирует пробный период на 3 дня.
+    Сначала деактивирует все старые активные подписки, затем создаёт новую trial.
+    """
     if has_trial_used(user_id):
         return False
     if has_active_subscription(user_id):
         return False
-    # Деактивируем все старые активные подписки (на случай зависших)
+    # Деактивируем все старые активные подписки, чтобы избежать конфликтов
     execute_query("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (user_id,))
     create_subscription(user_id, 'trial', 3)  # ровно 3 дня
     return True
