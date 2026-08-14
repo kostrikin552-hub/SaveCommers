@@ -53,7 +53,6 @@ def _extend_subscription_tx(cur, user_id: int, days: int, plan: str = 'pro') -> 
                    FOR UPDATE""", (user_id,))
     row = cur.fetchone()
     if row:
-        # row — кортеж: (id, end_date, plan_type)
         current_id = row[0]
         current_end = row[1]
         current_plan = row[2]
@@ -98,7 +97,7 @@ def days_left(user_id: int) -> int:
 
 def get_trial_days_left(user_id: int) -> int:
     sub = get_subscription(user_id)
-    if not sub or sub['plan_type'] != 'trial':
+    if not sub or sub.get('plan_type') != 'trial':
         return 0
     end_date = sub['end_date']
     if isinstance(end_date, str):
@@ -119,7 +118,7 @@ def activate_trial(user_id: int) -> bool:
         return False
     # Деактивируем все старые активные подписки (на случай зависших)
     execute_query("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (user_id,))
-    create_subscription(user_id, 'trial', 3)
+    create_subscription(user_id, 'trial', 3)  # ровно 3 дня
     return True
 
 def get_subscription_history(user_id: int, limit: int = 10) -> list:
