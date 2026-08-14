@@ -21,6 +21,19 @@ from ..config import SECRET_KEY, WEBAPP_URL, BACKEND_URL, BOT_USERNAME, MAX_DIAL
 
 logger = logging.getLogger(__name__)
 
+# ==================== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ====================
+
+def _format_date(dt) -> str:
+    """Форматирует datetime в читаемую строку (день.месяц.год)"""
+    if not dt:
+        return "неизвестно"
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        except:
+            return dt
+    return dt.strftime("%d.%m.%Y")
+
 # ==================== START ====================
 
 def get_welcome_text(first_name: str = "друг") -> str:
@@ -53,19 +66,35 @@ def handle_start(update: Dict[str, Any]) -> None:
                 log_event(user_id, 'referral_start', {'code': code})
                 process_referral_start(update, param)
                 return
-            # параметр promo удалён
 
     log_event(user_id, 'start_clicked')
 
     sub = get_subscription(user_id)
-    status = "✅ Активна" if sub else "❌ Не активна"
+    status_text = "✅ Активна" if sub else "❌ Не активна"
+    end_date_str = ""
+    if sub:
+        end_date = sub.get('end_date')
+        if end_date:
+            end_date_str = f"\n📅 Действует до: {_format_date(end_date)}"
+            try:
+                if isinstance(end_date, str):
+                    end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                delta = end_date - datetime.now(timezone.utc)
+                days_left = delta.days
+                if days_left <= 3 and days_left >= 0:
+                    end_date_str += f" ⚠️ Осталось {days_left} дней!"
+                elif days_left < 0:
+                    end_date_str = "\n⚠️ Подписка истекла!"
+            except:
+                pass
+
     welcome = get_welcome_text(first_name)
-    text = (
+    msg = (
         f"{welcome}\n\n"
-        f"📊 Твой статус: {status}\n"
+        f"📊 Твой статус: {status_text}{end_date_str}\n"
         "👇 Нажми «Новый разбор сделки» и вставь диалог"
     )
-    send_msg(chat_id, text, bot_token=update.get("bot_token"), kb=main_menu())
+    send_msg(chat_id, msg, bot_token=update.get("bot_token"), kb=main_menu())
 
 def handle_progress(update: Dict[str, Any]) -> None:
     chat_id = update["message"]["chat"]["id"]
@@ -141,7 +170,6 @@ def handle_analysis_message(update: Dict[str, Any]) -> None:
         send_msg(chat_id, f"❌ Диалог слишком длинный. Максимум {MAX_DIALOG_LENGTH} символов.", bot_token=bot_token)
         return
 
-    # Проверка лимита для бесплатных
     has_sub = has_active_subscription(user_id)
     if not has_sub:
         used = get_user_usage(user_id)
@@ -300,7 +328,6 @@ def handle_withdraw_callback(update: Dict[str, Any]) -> None:
         return
 
 def handle_withdraw_input(update: Dict[str, Any]) -> None:
-    """Обработка текстовых сообщений для ввода данных вывода."""
     message = update.get("message", {})
     user_id = message.get("from", {}).get("id")
     chat_id = message.get("chat", {}).get("id")
@@ -412,10 +439,9 @@ def handle_company_callback(update: Dict[str, Any]) -> None:
     else:
         answer_cb(query["id"], bot_token, "Неизвестное действие")
 
-# ==================== CHECK DB (ДОБАВЛЕНО) ====================
+# ==================== CHECK DB ====================
 
 def handle_check_db(update: Dict[str, Any]) -> None:
-    """Команда /check_db — показывает последние анализы пользователя из БД."""
     message = update.get("message", {})
     chat_id = message.get("chat", {}).get("id")
     user_id = message.get("from", {}).get("id")
@@ -445,7 +471,6 @@ def handle_check_db(update: Dict[str, Any]) -> None:
             f"Уровень: {level}\n"
             f"   {row['created_at']}\n"
         )
-    # Добавляем информацию о среднем
     avg_row = execute_query(
         "SELECT AVG(sales_health_score) as avg_health FROM analysis_history WHERE user_id = %s",
         (user_id,), fetch_one=True
