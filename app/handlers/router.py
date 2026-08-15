@@ -113,7 +113,6 @@ def process_update(update: Dict[str, Any]) -> None:
 
         for cmd, handler in menu_commands.items():
             if lower_text == cmd.lower():
-                # Если пользователь в режиме поддержки и нажал команду меню — выходим из режима
                 if user_id in _support_mode_users:
                     _support_mode_users.remove(user_id)
                 handler(update)
@@ -144,7 +143,6 @@ def process_update(update: Dict[str, Any]) -> None:
             return
 
         # === ЕСЛИ НИ ОДНА КОМАНДА НЕ ПОДОШЛА — ИГНОРИРУЕМ ===
-        # (старый fallback удалён — ничего не отправляем админу)
         logger.info(f"Ignored unrecognized message from user {user_id}: {text[:100]}")
         return
 
