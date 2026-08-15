@@ -248,15 +248,21 @@ def handle_contact_input(update: Dict[str, Any]) -> None:
 
 def handle_support_message(update: Dict[str, Any]) -> None:
     chat_id = update["message"]["chat"]["id"]
+    user_id = update["message"]["from"]["id"]
     bot_token = update.get("bot_token")
-    text = (
-        "❓ <b>Помощь</b>\n\n"
+
+    # Устанавливаем состояние ожидания сообщения в поддержку
+    set_state(user_id, "awaiting_support", {})
+    send_msg(
+        chat_id,
+        "❓ <b>Поддержка</b>\n\n"
+        "Напишите ваше сообщение ниже. Я перешлю его администратору.\n"
+        "Мы ответим в ближайшее время.\n\n"
         "📢 Наш канал с новостями и кейсами:\n"
-        "https://t.me/SaleFlow_News\n\n"
-        "📩 Если у вас есть вопросы или предложения, просто напишите сообщение в этот чат -- я перешлю его разработчику.\n"
-        "Мы ответим в ближайшее время."
+        "https://t.me/SaleFlow_News",
+        bot_token=bot_token,
+        disable_preview=True
     )
-    send_msg(chat_id, text, bot_token=bot_token, disable_preview=True)
 
 def handle_support_callback(update: Dict[str, Any]) -> None:
     query = update["callback_query"]
@@ -290,7 +296,6 @@ def handle_referral_message(update: Dict[str, Any]) -> None:
     status = get_referral_status(user_id)
     status_text = "🏆 Эксперт" if status["is_expert"] else f"🟡 До эксперта осталось {status['next_level']} приглашений"
 
-    # Дополнительная статистика (приглашённые, которые оплатили)
     paid_refs = execute_query(
         """SELECT COUNT(DISTINCT r.referred_id) 
            FROM referrals r
@@ -331,7 +336,6 @@ def handle_referral_message(update: Dict[str, Any]) -> None:
         "Пригласи друзей — получи статус эксперта и бесплатный Pro на месяц!"
     )
 
-    # КНОПКА ВЫВОДА ВСЕГДА
     kb = {"inline_keyboard": [[{"text": "💸 Вывести средства", "callback_data": "withdraw_start"}]]}
     send_msg(chat_id, text, bot_token=bot_token, kb=kb)
 
@@ -344,8 +348,7 @@ def handle_withdraw_callback(update: Dict[str, Any]) -> None:
 
     if data == "withdraw_start":
         balance = get_balance(user_id)
-        # Проверяем минимальную сумму ДО начала сбора данных
-        if balance < 50000:  # 500 рублей в копейках
+        if balance < 50000:
             answer_cb(query["id"], bot_token, "❌ Минимальная сумма вывода 500 ₽")
             send_msg(
                 chat_id,
