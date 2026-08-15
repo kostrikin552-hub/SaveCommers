@@ -19,10 +19,29 @@ def _format_date(dt) -> str:
             dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
         except:
             return dt
+    # Приводим к UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
     return dt.strftime("%d.%m.%Y")
 
+def _ensure_utc(dt):
+    """Приводит datetime к UTC."""
+    if dt is None:
+        return None
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        except ValueError:
+            dt = datetime.fromisoformat(dt)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt
+
 def _clean_expired_subscriptions():
-    """Автоматически деактивирует подписки, у которых end_date < NOW() и is_active = TRUE."""
     result = execute_query(
         "UPDATE subscriptions SET is_active = FALSE WHERE end_date < NOW() AND is_active = TRUE"
     )
@@ -44,7 +63,11 @@ def send_expiration_reminders():
         user_id = row['user_id']
         end_date = row['end_date']
         plan_type = row['plan_type']
-        days_left = (end_date - now).days
+        # Приводим end_date к UTC, чтобы сравнение с now было корректным
+        end_date_utc = _ensure_utc(end_date)
+        if end_date_utc is None:
+            continue
+        days_left = (end_date_utc - now).days
 
         key = f"{user_id}_{days_left}"
         if key in _sent_notifications:
@@ -58,7 +81,7 @@ def send_expiration_reminders():
         elif days_left == 1:
             msg = f"⏰ Ваша подписка «{plan_type.capitalize()}» истекает ЗАВТРА! Успейте продлить доступ."
         else:
-            msg = f"⏰ Ваша подписка «{plan_type.capitalize()}» истекает через {days_left} дня (до {_format_date(end_date)}). Продлите доступ, чтобы не потерять прогресс."
+            msg = f"⏰ Ваша подписка «{plan_type.capitalize()}» истекает через {days_left} дня (до {_format_date(end_date_utc)}). Продлите доступ, чтобы не потерять прогресс."
 
         kb = {"inline_keyboard": [[{"text": "💎 Продлить подписку", "callback_data": "tariff_pro"}]]}
         send_msg(user_id, msg, bot_token=BOT_TOKEN, kb=kb)
