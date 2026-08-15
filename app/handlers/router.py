@@ -78,7 +78,6 @@ def process_update(update: Dict[str, Any]) -> None:
         # === ПРОВЕРКА СОСТОЯНИЯ ПОДДЕРЖКИ ===
         state = get_state_data(user_id)
         if state and state.get("type") == "awaiting_support":
-            # Пересылаем сообщение админу
             try:
                 user = message.get("from", {})
                 user_mention = f"@{user.get('username')}" if user.get('username') else f"[{user.get('first_name', '')}](tg://user?id={user_id})"
@@ -140,8 +139,8 @@ def process_update(update: Dict[str, Any]) -> None:
             handle_withdraw_input(update)
             return
 
-        # === ЕСЛИ НИ ОДНА КОМАНДА НЕ ПОДОШЛА — ИГНОРИРУЕМ ===
-        # Пользователь написал что-то нераспознанное — ничего не делаем
+        # === ЕСЛИ НИ ОДНА КОМАНДА НЕ ПОДОШЛА — ПОЛНОЕ ИГНОРИРОВАНИЕ ===
+        # Без подсказки, без ответа, ничего не отправляем.
         logger.info(f"Ignored unrecognized message from user {user_id}: {text[:100]}")
         return
 
