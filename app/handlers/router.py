@@ -5,7 +5,7 @@ from .user import (
     handle_start, handle_progress,
     handle_analysis_message, handle_analysis_callback, handle_cases,
     handle_contact_callback, handle_contact_input,
-    handle_support_message, handle_support_callback,
+    handle_support_message, handle_support_callback, handle_support_input,
     process_referral_start, handle_referral_message, handle_referral_callback,
     handle_company_message, handle_company_callback,
     handle_withdraw_callback, handle_withdraw_input,
@@ -119,21 +119,21 @@ def process_update(update: Dict[str, Any]) -> None:
             handle_analysis_message(update)
             return
 
-        # === ПРОВЕРКА СОСТОЯНИЯ ВЫВОДА (если пользователь вводит данные) ===
+        # === ПРОВЕРКА СОСТОЯНИЯ ПОЛЬЗОВАТЕЛЯ ===
         state = get_state_data(user_id)
+
+        # Пользователь находится в процессе вывода средств
         if state and state.get("type", "").startswith("awaiting_withdraw"):
             handle_withdraw_input(update)
             return
 
-        # === ПЕРЕСЫЛКА СООБЩЕНИЯ В ПОДДЕРЖКУ (если ничего не подошло) ===
-        try:
-            user = message.get("from", {})
-            user_mention = f"@{user.get('username')}" if user.get('username') else f"[{user.get('first_name', '')}](tg://user?id={user_id})"
-            admin_text = f"📩 <b>Сообщение от пользователя</b>\nID: {user_id}\nИмя: {user_mention}\nТекст: {text[:4000]}\nЧат: {chat_id}"
-            send_msg(ADMIN_ID, admin_text, bot_token=bot_token, disable_preview=True)
-            send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
-        except Exception as e:
-            logger.exception("Error forwarding message to admin")
+        # Пользователь нажал «Помощь» и сейчас ожидается его сообщение
+        if state and state.get("type") == "awaiting_support_message":
+            handle_support_input(update)
+            return
+
+        # === ЕСЛИ НИ ОДНА КОМАНДА НЕ ПОДОШЛА — ИГНОРИРУЕМ ===
+        logger.info(f"Ignored unrecognized message from user {user_id}: {text[:100]}")
         return
 
     if "pre_checkout_query" in update:
