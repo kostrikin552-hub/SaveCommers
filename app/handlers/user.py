@@ -248,21 +248,15 @@ def handle_contact_input(update: Dict[str, Any]) -> None:
 
 def handle_support_message(update: Dict[str, Any]) -> None:
     chat_id = update["message"]["chat"]["id"]
-    user_id = update["message"]["from"]["id"]
     bot_token = update.get("bot_token")
-
-    # Устанавливаем состояние ожидания сообщения в поддержку
-    set_state(user_id, "awaiting_support", {})
-    send_msg(
-        chat_id,
-        "❓ <b>Поддержка</b>\n\n"
-        "Напишите ваше сообщение ниже. Я перешлю его администратору.\n"
-        "Мы ответим в ближайшее время.\n\n"
+    text = (
+        "❓ <b>Помощь</b>\n\n"
         "📢 Наш канал с новостями и кейсами:\n"
-        "https://t.me/SaleFlow_News",
-        bot_token=bot_token,
-        disable_preview=True
+        "https://t.me/SaleFlow_News\n\n"
+        "📩 Если у вас есть вопросы или предложения, просто напишите сообщение в этот чат -- я перешлю его разработчику.\n"
+        "Мы ответим в ближайшее время."
     )
+    send_msg(chat_id, text, bot_token=bot_token, disable_preview=True)
 
 def handle_support_callback(update: Dict[str, Any]) -> None:
     query = update["callback_query"]
