@@ -112,7 +112,6 @@ def _get_extended_stats() -> dict:
         fetch_one=True
     )['count']
 
-    # ----- ЗАЯВКИ НА ВЫВОД -----
     pending_withdrawals = execute_query(
         "SELECT COUNT(*) FROM withdraw_requests WHERE status = 'pending'",
         fetch_one=True
@@ -134,17 +133,9 @@ def _get_extended_stats() -> dict:
 
     # ----- Динамика: изменения за день, неделю, месяц -----
     def get_delta(field: str, table: str, condition: str = "", date_field: str = "created_at") -> dict:
-        """
-        Возвращает абсолютное и процентное изменение за день, неделю, месяц.
-        field — имя поля (COUNT(*) или SUM(amount)/100.0)
-        table — имя таблицы
-        condition — дополнительное условие WHERE (без WHERE)
-        date_field — поле с датой
-        """
         result = {}
         now = "NOW()"
         for period, interval in [('day', '1 day'), ('week', '7 days'), ('month', '30 days')]:
-            # Текущий период (от -interval до NOW)
             cur_query = f"""
                 SELECT {field} as value
                 FROM {table}
@@ -154,7 +145,6 @@ def _get_extended_stats() -> dict:
             cur_val = execute_query(cur_query, fetch_one=True)
             cur_val = cur_val['value'] if cur_val and cur_val['value'] is not None else 0
 
-            # Предыдущий период (от -2*interval до -interval)
             days = int(interval.split()[0])
             prev_query = f"""
                 SELECT {field} as value
@@ -176,7 +166,6 @@ def _get_extended_stats() -> dict:
             }
         return result
 
-    # Получаем динамику для ключевых метрик
     users_delta = get_delta('COUNT(*)', 'users')
     revenue_delta = get_delta('COALESCE(SUM(amount), 0) / 100.0', 'payments', "status = 'succeeded'")
     analyses_delta = get_delta('COUNT(*)', 'analysis_history')
@@ -202,8 +191,6 @@ def _get_extended_stats() -> dict:
     }
 
 def _format_stats(stats: dict) -> str:
-    """Форматирует статистику в читаемое сообщение с динамикой."""
-    # Функция для форматирования изменения
     def fmt_change(delta: dict, period: str) -> str:
         d = delta[period]
         sign = '+' if d['change_abs'] >= 0 else ''
@@ -213,19 +200,16 @@ def _format_stats(stats: dict) -> str:
     lines = []
     lines.append("📊 <b>Статистика SaleFlow</b>\n")
 
-    # Пользователи
     lines.append(f"👥 <b>Пользователи:</b> {stats['total_users']}")
     lines.append(f"   📈 за день: {fmt_change(stats['users_delta'], 'day')}")
     lines.append(f"   📈 за неделю: {fmt_change(stats['users_delta'], 'week')}")
     lines.append(f"   📈 за месяц: {fmt_change(stats['users_delta'], 'month')}")
 
-    # Подписки
     lines.append(f"\n🟢 <b>Активные подписки:</b> {stats['active_subs']}")
     lines.append(f"  • Pro: {stats['pro_count']}")
     lines.append(f"  • Premium: {stats['premium_count']}")
     lines.append(f"  • Trial: {stats['trial_count']}")
 
-    # Анализы
     lines.append(f"\n📈 <b>Анализы:</b> {stats['total_analyses']}")
     lines.append(f"   за день: {stats['analyses_today']}")
     lines.append(f"   за неделю: {stats['analyses_week']}")
@@ -233,13 +217,11 @@ def _format_stats(stats: dict) -> str:
     lines.append(f"   динамика за неделю: {fmt_change(stats['analyses_delta'], 'week')}")
     lines.append(f"   динамика за месяц: {fmt_change(stats['analyses_delta'], 'month')}")
 
-    # Доход
     lines.append(f"\n💰 <b>Доход:</b> {stats['total_revenue']:.2f} ₽")
     lines.append(f"   динамика за день: {fmt_change(stats['revenue_delta'], 'day')}")
     lines.append(f"   динамика за неделю: {fmt_change(stats['revenue_delta'], 'week')}")
     lines.append(f"   динамика за месяц: {fmt_change(stats['revenue_delta'], 'month')}")
 
-    # Платежи и заявки на вывод
     lines.append(f"\n💳 <b>Платежи:</b>")
     lines.append(f"  Успешных: {stats['successful_payments']}")
     lines.append(f"  Ожидающих: {stats['pending_payments']}")
@@ -247,7 +229,6 @@ def _format_stats(stats: dict) -> str:
     lines.append(f"  Ожидают: {stats['pending_withdrawals']}")
     lines.append(f"  Выполнено: {stats['completed_withdrawals']}")
 
-    # Серия
     lines.append(f"\n🔥 <b>Макс. серия:</b> {stats['max_streak']} дней")
 
     return "\n".join(lines)
