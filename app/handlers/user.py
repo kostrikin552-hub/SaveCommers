@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # ==================== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ====================
 
 def _format_date(dt) -> str:
+    """Форматирует дату в формат ДД.ММ.ГГГГ, всегда в UTC."""
     if not dt:
         return "неизвестно"
     if isinstance(dt, str):
@@ -31,6 +32,10 @@ def _format_date(dt) -> str:
             dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
         except:
             return dt
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
     return dt.strftime("%d.%m.%Y")
 
 # ==================== START ====================
