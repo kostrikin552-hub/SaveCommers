@@ -1,5 +1,6 @@
 # file: app/handlers/router.py
 import logging
+import html
 from typing import Dict, Any
 from .user import (
     handle_start, handle_progress,
@@ -71,7 +72,9 @@ def process_update(update: Dict[str, Any]) -> None:
             try:
                 user = message.get("from", {})
                 user_mention = f"@{user.get('username')}" if user.get('username') else f"[{user.get('first_name', '')}](tg://user?id={user_id})"
-                admin_text = f"📩 <b>Сообщение в поддержку</b>\nID: {user_id}\nИмя: {user_mention}\nТекст: {text[:4000]}\nЧат: {chat_id}"
+                # Экранируем текст сообщения, чтобы избежать ошибок HTML
+                safe_text = html.escape(text[:4000])
+                admin_text = f"📩 <b>Сообщение в поддержку</b>\nID: {user_id}\nИмя: {user_mention}\nТекст: {safe_text}\nЧат: {chat_id}"
                 send_msg(ADMIN_ID, admin_text, bot_token=bot_token, disable_preview=True)
                 send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
                 _support_mode_users.remove(user_id)
