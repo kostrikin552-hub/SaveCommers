@@ -1,5 +1,6 @@
 # file: app/handlers/admin.py
 import logging
+import html
 from typing import Dict, Any
 from datetime import datetime, timedelta, timezone
 from ..db import db_fetchall, execute_query, get_connection, transaction
@@ -53,11 +54,11 @@ def handle_admin_message(update: Dict[str, Any]) -> None:
             send_msg(chat_id, "❌ Неверный формат. Использование: /admin grant <user_id> <plan> <days>", bot_token=bot_token)
     elif text.startswith("/admin revoke"):
         parts = text.split()
-        if len(parts) != 2:
+        if len(parts) != 3:
             send_msg(chat_id, "❌ Использование: /admin revoke <user_id>", bot_token=bot_token)
             return
         try:
-            target_user = int(parts[1])
+            target_user = int(parts[2])
             execute_query("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (target_user,))
             send_msg(chat_id, f"✅ Все активные подписки пользователя {target_user} деактивированы", bot_token=bot_token)
         except ValueError:
@@ -66,8 +67,6 @@ def handle_admin_message(update: Dict[str, Any]) -> None:
         send_msg(chat_id, "Доступные команды:\n/admin stats - статистика\n/admin grant <user_id> <plan> <days> - активация подписки\n/admin revoke <user_id> - деактивация всех подписок", bot_token=bot_token)
 
 def _get_extended_stats() -> dict:
-    """Собирает расширенную статистику с динамикой за день/неделю/месяц."""
-    # ----- Текущие значения -----
     total_users = execute_query("SELECT COUNT(*) FROM users", fetch_one=True)['count']
 
     active_subs = execute_query(
@@ -131,7 +130,6 @@ def _get_extended_stats() -> dict:
     )
     max_streak_val = max_streak['max'] if max_streak and max_streak['max'] else 0
 
-    # ----- Динамика: изменения за день, неделю, месяц -----
     def get_delta(field: str, table: str, condition: str = "", date_field: str = "created_at") -> dict:
         result = {}
         now = "NOW()"
