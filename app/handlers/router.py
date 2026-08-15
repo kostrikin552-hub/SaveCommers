@@ -9,7 +9,7 @@ from .user import (
     process_referral_start, handle_referral_message, handle_referral_callback,
     handle_company_message, handle_company_callback,
     handle_withdraw_callback, handle_withdraw_input,
-    handle_check_db  # <-- импорт новой функции
+    handle_check_db
 )
 from .payments import (
     handle_payment_callback, handle_payment_message,
@@ -18,7 +18,7 @@ from .payments import (
 from .admin import handle_admin_callback, handle_admin_message
 from ..config import B2B_ENABLED, BOT_USERNAME, ADMIN_ID
 from ..utils import send_msg, answer_cb
-from ..db import get_state_data, clear_state
+from ..db import get_state_data, clear_state, set_state
 
 logger = logging.getLogger(__name__)
 
@@ -71,14 +71,27 @@ def process_update(update: Dict[str, Any]) -> None:
         if text.startswith("/support"):
             handle_support_message(update)
             return
-        if text.startswith("/check_db"):  # <-- добавлено
+        if text.startswith("/check_db"):
             handle_check_db(update)
             return
 
-        # === ОБРАБОТКА КОМАНД ГЛАВНОГО МЕНЮ ===
-        # Очищаем состояние вывода перед любой командой меню (чтобы не мешало)
-        lower_text = text.lower()
+        # === ПРОВЕРКА СОСТОЯНИЯ ПОДДЕРЖКИ ===
+        state = get_state_data(user_id)
+        if state and state.get("type") == "awaiting_support":
+            # Пересылаем сообщение админу
+            try:
+                user = message.get("from", {})
+                user_mention = f"@{user.get('username')}" if user.get('username') else f"[{user.get('first_name', '')}](tg://user?id={user_id})"
+                admin_text = f"📩 <b>Сообщение в поддержку</b>\nID: {user_id}\nИмя: {user_mention}\nТекст: {text[:4000]}\nЧат: {chat_id}"
+                send_msg(ADMIN_ID, admin_text, bot_token=bot_token, disable_preview=True)
+                send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
+                clear_state(user_id)
+            except Exception as e:
+                logger.exception("Error forwarding support message")
+            return
 
+        # === ОБРАБОТКА КОМАНД ГЛАВНОГО МЕНЮ ===
+        lower_text = text.lower()
         menu_commands = {
             "🚀 новый разбор сделки": handle_analysis_message,
             "новый разбор сделки": handle_analysis_message,
@@ -127,15 +140,9 @@ def process_update(update: Dict[str, Any]) -> None:
             handle_withdraw_input(update)
             return
 
-        # === ПЕРЕСЫЛКА СООБЩЕНИЯ В ПОДДЕРЖКУ (если ничего не подошло) ===
-        try:
-            user = message.get("from", {})
-            user_mention = f"@{user.get('username')}" if user.get('username') else f"[{user.get('first_name', '')}](tg://user?id={user_id})"
-            admin_text = f"📩 <b>Сообщение от пользователя</b>\nID: {user_id}\nИмя: {user_mention}\nТекст: {text[:4000]}\nЧат: {chat_id}"
-            send_msg(ADMIN_ID, admin_text, bot_token=bot_token, disable_preview=True)
-            send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
-        except Exception as e:
-            logger.exception("Error forwarding message to admin")
+        # === ЕСЛИ НИ ОДНА КОМАНДА НЕ ПОДОШЛА — ИГНОРИРУЕМ ===
+        # Пользователь написал что-то нераспознанное — ничего не делаем
+        logger.info(f"Ignored unrecognized message from user {user_id}: {text[:100]}")
         return
 
     if "pre_checkout_query" in update:
