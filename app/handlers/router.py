@@ -22,7 +22,13 @@ from ..db import get_state_data, clear_state, set_state
 
 logger = logging.getLogger(__name__)
 
+# Временное хранилище для пользователей в режиме поддержки (в памяти)
+# При перезапуске бота сбросится, но для теста подойдёт
+_support_mode_users = set()
+
 def process_update(update: Dict[str, Any]) -> None:
+    global _support_mode_users
+
     if "callback_query" in update:
         query = update["callback_query"]
         data = query.get("data", "")
@@ -75,16 +81,15 @@ def process_update(update: Dict[str, Any]) -> None:
             handle_check_db(update)
             return
 
-        # === ПРОВЕРКА СОСТОЯНИЯ ПОДДЕРЖКИ ===
-        state = get_state_data(user_id)
-        if state and state.get("type") == "awaiting_support":
+        # === ПРОВЕРКА РЕЖИМА ПОДДЕРЖКИ (по user_id в памяти) ===
+        if user_id in _support_mode_users:
             try:
                 user = message.get("from", {})
                 user_mention = f"@{user.get('username')}" if user.get('username') else f"[{user.get('first_name', '')}](tg://user?id={user_id})"
                 admin_text = f"📩 <b>Сообщение в поддержку</b>\nID: {user_id}\nИмя: {user_mention}\nТекст: {text[:4000]}\nЧат: {chat_id}"
                 send_msg(ADMIN_ID, admin_text, bot_token=bot_token, disable_preview=True)
                 send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
-                clear_state(user_id)
+                _support_mode_users.remove(user_id)  # Снимаем режим поддержки
             except Exception as e:
                 logger.exception("Error forwarding support message")
             return
@@ -109,9 +114,9 @@ def process_update(update: Dict[str, Any]) -> None:
 
         for cmd, handler in menu_commands.items():
             if lower_text == cmd.lower():
-                state = get_state_data(user_id)
-                if state and state.get("type", "").startswith("awaiting_withdraw"):
-                    clear_state(user_id)
+                # Если пользователь в режиме поддержки, но нажал команду меню — выходим из режима
+                if user_id in _support_mode_users:
+                    _support_mode_users.remove(user_id)
                 handler(update)
                 return
 
@@ -140,7 +145,6 @@ def process_update(update: Dict[str, Any]) -> None:
             return
 
         # === ЕСЛИ НИ ОДНА КОМАНДА НЕ ПОДОШЛА — ПОЛНОЕ ИГНОРИРОВАНИЕ ===
-        # Без подсказки, без ответа, ничего не отправляем.
         logger.info(f"Ignored unrecognized message from user {user_id}: {text[:100]}")
         return
 
