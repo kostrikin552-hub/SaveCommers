@@ -5,7 +5,7 @@ from .user import (
     handle_start, handle_progress,
     handle_analysis_message, handle_analysis_callback, handle_cases,
     handle_contact_callback, handle_contact_input,
-    handle_support_message, handle_support_callback, handle_support_input,
+    handle_support_message, handle_support_callback,
     process_referral_start, handle_referral_message, handle_referral_callback,
     handle_company_message, handle_company_callback,
     handle_withdraw_callback, handle_withdraw_input,
@@ -22,7 +22,12 @@ from ..db import get_state_data, clear_state
 
 logger = logging.getLogger(__name__)
 
+# Глобальный сет для пользователей в режиме поддержки
+_support_mode_users = set()
+
 def process_update(update: Dict[str, Any]) -> None:
+    global _support_mode_users
+
     if "callback_query" in update:
         query = update["callback_query"]
         data = query.get("data", "")
@@ -61,6 +66,19 @@ def process_update(update: Dict[str, Any]) -> None:
         user_id = message.get("from", {}).get("id")
         bot_token = update.get("bot_token")
 
+        # === ПРОВЕРКА: ПОЛЬЗОВАТЕЛЬ В РЕЖИМЕ ПОДДЕРЖКИ ===
+        if user_id in _support_mode_users:
+            try:
+                user = message.get("from", {})
+                user_mention = f"@{user.get('username')}" if user.get('username') else f"[{user.get('first_name', '')}](tg://user?id={user_id})"
+                admin_text = f"📩 <b>Сообщение в поддержку</b>\nID: {user_id}\nИмя: {user_mention}\nТекст: {text[:4000]}\nЧат: {chat_id}"
+                send_msg(ADMIN_ID, admin_text, bot_token=bot_token, disable_preview=True)
+                send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
+                _support_mode_users.remove(user_id)
+            except Exception as e:
+                logger.exception("Error forwarding support message")
+            return
+
         # === ОБРАБОТКА СИСТЕМНЫХ КОМАНД ===
         if text.startswith("/start"):
             handle_start(update)
@@ -95,9 +113,9 @@ def process_update(update: Dict[str, Any]) -> None:
 
         for cmd, handler in menu_commands.items():
             if lower_text == cmd.lower():
-                state = get_state_data(user_id)
-                if state and state.get("type", "").startswith("awaiting_withdraw"):
-                    clear_state(user_id)
+                # Если пользователь в режиме поддержки и нажал команду меню — выходим из режима
+                if user_id in _support_mode_users:
+                    _support_mode_users.remove(user_id)
                 handler(update)
                 return
 
@@ -119,20 +137,14 @@ def process_update(update: Dict[str, Any]) -> None:
             handle_analysis_message(update)
             return
 
-        # === ПРОВЕРКА СОСТОЯНИЯ ПОЛЬЗОВАТЕЛЯ ===
+        # === ПРОВЕРКА СОСТОЯНИЯ ВЫВОДА (если пользователь вводит данные) ===
         state = get_state_data(user_id)
-
-        # Пользователь находится в процессе вывода средств
         if state and state.get("type", "").startswith("awaiting_withdraw"):
             handle_withdraw_input(update)
             return
 
-        # Пользователь нажал «Помощь» и сейчас ожидается его сообщение
-        if state and state.get("type") == "awaiting_support_message":
-            handle_support_input(update)
-            return
-
         # === ЕСЛИ НИ ОДНА КОМАНДА НЕ ПОДОШЛА — ИГНОРИРУЕМ ===
+        # (старый fallback удалён — ничего не отправляем админу)
         logger.info(f"Ignored unrecognized message from user {user_id}: {text[:100]}")
         return
 
