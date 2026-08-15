@@ -1,5 +1,6 @@
 # file: app/handlers/user.py
 import logging
+import html
 from html import escape
 from typing import Dict, Any
 from datetime import datetime, timezone
@@ -427,13 +428,17 @@ def handle_withdraw_input(update: Dict[str, Any]) -> None:
         clear_state(user_id)
         send_msg(chat_id, f"✅ Заявка на вывод {amount_rub} ₽ создана. Ожидайте подтверждения администратором.", bot_token=bot_token)
 
+        # Экранируем пользовательские данные перед отправкой админу
+        safe_method = html.escape(method)
+        safe_bank = html.escape(bank)
+        safe_full_name = html.escape(full_name)
         admin_text = (
             f"💰 <b>Новая заявка на вывод</b>\n"
             f"Пользователь: {user_id}\n"
             f"Сумма: {amount_rub} ₽\n"
-            f"Метод: {method}\n"
-            f"Банк: {bank}\n"
-            f"ФИО: {full_name}\n"
+            f"Метод: {safe_method}\n"
+            f"Банк: {safe_bank}\n"
+            f"ФИО: {safe_full_name}\n"
             f"ID заявки: {request_id}"
         )
         admin_kb = {"inline_keyboard": [[{"text": "✅ Подтвердить вывод", "callback_data": f"admin_approve_withdraw_{request_id}"}]]}
