@@ -18,17 +18,11 @@ from .payments import (
 from .admin import handle_admin_callback, handle_admin_message
 from ..config import B2B_ENABLED, BOT_USERNAME, ADMIN_ID
 from ..utils import send_msg, answer_cb
-from ..db import get_state_data, clear_state, set_state
+from ..db import get_state_data, clear_state
 
 logger = logging.getLogger(__name__)
 
-# Временное хранилище для пользователей в режиме поддержки (в памяти)
-# При перезапуске бота сбросится, но для теста подойдёт
-_support_mode_users = set()
-
 def process_update(update: Dict[str, Any]) -> None:
-    global _support_mode_users
-
     if "callback_query" in update:
         query = update["callback_query"]
         data = query.get("data", "")
@@ -81,19 +75,6 @@ def process_update(update: Dict[str, Any]) -> None:
             handle_check_db(update)
             return
 
-        # === ПРОВЕРКА РЕЖИМА ПОДДЕРЖКИ (по user_id в памяти) ===
-        if user_id in _support_mode_users:
-            try:
-                user = message.get("from", {})
-                user_mention = f"@{user.get('username')}" if user.get('username') else f"[{user.get('first_name', '')}](tg://user?id={user_id})"
-                admin_text = f"📩 <b>Сообщение в поддержку</b>\nID: {user_id}\nИмя: {user_mention}\nТекст: {text[:4000]}\nЧат: {chat_id}"
-                send_msg(ADMIN_ID, admin_text, bot_token=bot_token, disable_preview=True)
-                send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
-                _support_mode_users.remove(user_id)  # Снимаем режим поддержки
-            except Exception as e:
-                logger.exception("Error forwarding support message")
-            return
-
         # === ОБРАБОТКА КОМАНД ГЛАВНОГО МЕНЮ ===
         lower_text = text.lower()
         menu_commands = {
@@ -114,9 +95,9 @@ def process_update(update: Dict[str, Any]) -> None:
 
         for cmd, handler in menu_commands.items():
             if lower_text == cmd.lower():
-                # Если пользователь в режиме поддержки, но нажал команду меню — выходим из режима
-                if user_id in _support_mode_users:
-                    _support_mode_users.remove(user_id)
+                state = get_state_data(user_id)
+                if state and state.get("type", "").startswith("awaiting_withdraw"):
+                    clear_state(user_id)
                 handler(update)
                 return
 
@@ -144,8 +125,15 @@ def process_update(update: Dict[str, Any]) -> None:
             handle_withdraw_input(update)
             return
 
-        # === ЕСЛИ НИ ОДНА КОМАНДА НЕ ПОДОШЛА — ПОЛНОЕ ИГНОРИРОВАНИЕ ===
-        logger.info(f"Ignored unrecognized message from user {user_id}: {text[:100]}")
+        # === ПЕРЕСЫЛКА СООБЩЕНИЯ В ПОДДЕРЖКУ (если ничего не подошло) ===
+        try:
+            user = message.get("from", {})
+            user_mention = f"@{user.get('username')}" if user.get('username') else f"[{user.get('first_name', '')}](tg://user?id={user_id})"
+            admin_text = f"📩 <b>Сообщение от пользователя</b>\nID: {user_id}\nИмя: {user_mention}\nТекст: {text[:4000]}\nЧат: {chat_id}"
+            send_msg(ADMIN_ID, admin_text, bot_token=bot_token, disable_preview=True)
+            send_msg(chat_id, "✅ Ваше сообщение отправлено в поддержку. Мы ответим в ближайшее время.", bot_token=bot_token)
+        except Exception as e:
+            logger.exception("Error forwarding message to admin")
         return
 
     if "pre_checkout_query" in update:
