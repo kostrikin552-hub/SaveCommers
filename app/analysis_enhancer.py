@@ -59,8 +59,6 @@ def detect_need(dialog_text: str) -> Dict[str, Any]:
     roles = _parse_roles(dialog_text)
     manager_text = roles.get('manager', '')
     client_text = roles.get('client', '')
-
-    # Расширенные ключевые слова для вопросов продавца
     need_keywords = [
         'задача', 'цель', 'проблема', 'нужно', 'хотите', 'интересует',
         'планируете', 'использовать', 'какой бюджет', 'какие задачи',
@@ -68,15 +66,12 @@ def detect_need(dialog_text: str) -> Dict[str, Any]:
         'какую задачу', 'какого результата', 'что вы хотите'
     ]
     has_question = any(kw in manager_text.lower() for kw in need_keywords)
-
-    # Ключевые слова для ответа клиента
     client_info_keywords = [
         'хочу', 'нужно', 'планирую', 'интересует', 'работаю', 'использую',
         'бизнес', 'задача', 'бюджет', 'цель', 'хотел бы', 'продавать',
         'запускаться', 'получить', 'достичь'
     ]
     has_client_answer = any(kw in client_text.lower() for kw in client_info_keywords)
-
     if has_question and has_client_answer:
         status = DONE
         reason = "Продавец задал вопрос о потребностях, клиент дал содержательный ответ."
@@ -89,19 +84,12 @@ def detect_need(dialog_text: str) -> Dict[str, Any]:
         status = FAILED
         reason = "Не обнаружено вопросов о потребностях или клиент не предоставил информацию."
         confidence = 0.8
-    return {
-        "status": status,
-        "confidence": confidence,
-        "reason": reason,
-        "has_question": has_question,
-        "has_client_answer": has_client_answer
-    }
+    return {"status": status, "confidence": confidence, "reason": reason, "has_question": has_question, "has_client_answer": has_client_answer}
 
 def detect_next_step(dialog_text: str) -> Dict[str, Any]:
     roles = _parse_roles(dialog_text)
     manager_text = roles.get('manager', '')
     client_text = roles.get('client', '')
-
     next_step_keywords = [
         'следующий', 'дальше', 'отправлю', 'подготовлю', 'свяжусь',
         'созвонимся', 'напишу', 'встретимся', 'завтра', 'позже',
@@ -109,14 +97,12 @@ def detect_next_step(dialog_text: str) -> Dict[str, Any]:
         'встреча', 'звонок', 'демо', 'презентация'
     ]
     has_next_step = any(kw in manager_text.lower() for kw in next_step_keywords)
-
     confirmation_keywords = [
         'да', 'хорошо', 'договорились', 'ок', 'отлично', 'согласен',
         'устраивает', 'подходит', 'давайте', 'конечно', 'жду',
         'попробуем', 'давай', 'попробую', 'согласна'
     ]
     has_confirmation = any(kw in client_text.lower() for kw in confirmation_keywords)
-
     if has_next_step and has_confirmation:
         status = DONE
         reason = "Продавец обозначил следующий шаг, клиент подтвердил."
@@ -129,17 +115,9 @@ def detect_next_step(dialog_text: str) -> Dict[str, Any]:
         status = FAILED
         reason = "Не обнаружено следующего шага."
         confidence = 0.8
-
     time_match = re.search(r'(завтра|сегодня|послезавтра|\d{1,2}:\d{2}|\d{1,2} часа|\d{1,2} дней|\d{1,2} минут)', manager_text + ' ' + client_text, re.I)
     time = time_match.group(0) if time_match else None
-    return {
-        "status": status,
-        "confidence": confidence,
-        "reason": reason,
-        "has_next_step": has_next_step,
-        "has_confirmation": has_confirmation,
-        "time": time
-    }
+    return {"status": status, "confidence": confidence, "reason": reason, "has_next_step": has_next_step, "has_confirmation": has_confirmation, "time": time}
 
 def detect_objection_handling(dialog_text: str) -> Dict[str, Any]:
     roles = _parse_roles(dialog_text)
@@ -165,27 +143,18 @@ def detect_objection_handling(dialog_text: str) -> Dict[str, Any]:
         status = FAILED
         reason = "Возражение проигнорировано или не обработано."
         confidence = 0.8
-    return {
-        "status": status,
-        "confidence": confidence,
-        "reason": reason,
-        "has_objection": has_objection,
-        "has_strong": has_strong,
-        "has_partial": has_partial
-    }
+    return {"status": status, "confidence": confidence, "reason": reason, "has_objection": has_objection, "has_strong": has_strong, "has_partial": has_partial}
 
 def calculate_sales_health(enhanced: Dict[str, Any], dialog_text: str) -> int:
     needs_status = enhanced.get('needs_enhanced', {}).get('status', 'failed')
     next_status = enhanced.get('next_step_enhanced', {}).get('status', 'failed')
     objection_status = enhanced.get('objection_enhanced', {}).get('status', 'failed')
-
     budget_keywords = ['бюджет', 'сколько готовы', 'какой бюджет', 'сумма', 'цена', 'стоимость']
     timing_keywords = ['срок', 'когда', 'за сколько', 'через сколько', 'дата']
     decision_keywords = ['решение', 'ЛПР', 'кто принимает', 'руководитель', 'утверждать']
     has_budget = any(kw in dialog_text.lower() for kw in budget_keywords)
     has_timing = any(kw in dialog_text.lower() for kw in timing_keywords)
     has_decision = any(kw in dialog_text.lower() for kw in decision_keywords)
-
     qualification_score = 0
     if has_budget and has_timing and has_decision:
         qualification_score = 100
@@ -195,15 +164,12 @@ def calculate_sales_health(enhanced: Dict[str, Any], dialog_text: str) -> int:
         qualification_score = 50
     else:
         qualification_score = 0
-
     need_score = status_to_score(needs_status)
     next_score = status_to_score(next_status)
     objection_score = status_to_score(objection_status)
-
     value_keywords = ['выгода', 'результат', 'экономия', 'увеличит', 'повысит', 'упростит', 'польза', 'поможет', 'сэкономите', 'получите', 'окупится']
     has_value = any(kw in dialog_text.lower() for kw in value_keywords)
     value_score = 100 if has_value else 0
-
     total = (
         qualification_score * 0.20 +
         need_score * 0.20 +
@@ -217,18 +183,14 @@ def enhance_analysis(original_result: Dict[str, Any], dialog_text: str) -> Dict[
     enhanced = original_result.copy()
     needs_enhanced = detect_need(dialog_text)
     enhanced['needs_enhanced'] = needs_enhanced
-
     next_step_enhanced = detect_next_step(dialog_text)
     enhanced['next_step_enhanced'] = next_step_enhanced
-
     objection_enhanced = detect_objection_handling(dialog_text)
     enhanced['objection_enhanced'] = objection_enhanced
-
     new_health = calculate_sales_health(enhanced, dialog_text)
     enhanced['sales_health_score'] = new_health
     if 'sales_health_score' in original_result:
         enhanced['sales_health_score_old'] = original_result['sales_health_score']
-
     issues = []
     if needs_enhanced['status'] != DONE:
         issues.append('need_not_identified')
@@ -242,78 +204,33 @@ def enhance_analysis(original_result: Dict[str, Any], dialog_text: str) -> Dict[
     has_value = any(kw in dialog_text.lower() for kw in value_keywords)
     if not has_value:
         issues.append('value_not_shown')
-
     from .recommendations import get_recommendation
     recommendations = [get_recommendation(issue) for issue in issues]
     enhanced['recommendations'] = recommendations[:3]
-
     if needs_enhanced['status'] == FAILED:
-        enhanced['main_error'] = {
-            "title": "Не выявлена потребность клиента",
-            "explanation": "Клиент сразу спросил цену или задал вопрос, но менеджер не выяснил задачу. Это переводит разговор в сравнение цен и снижает вероятность сделки."
-        }
+        enhanced['main_error'] = {"title": "Не выявлена потребность клиента", "explanation": "Клиент сразу спросил цену или задал вопрос, но менеджер не выяснил задачу. Это переводит разговор в сравнение цен и снижает вероятность сделки."}
     elif objection_enhanced['status'] == FAILED:
-        enhanced['main_error'] = {
-            "title": "Возражение клиента проигнорировано",
-            "explanation": "Клиент возразил, но менеджер не выяснил причину и не предложил решение."
-        }
+        enhanced['main_error'] = {"title": "Возражение клиента проигнорировано", "explanation": "Клиент возразил, но менеджер не выяснил причину и не предложил решение."}
     elif next_step_enhanced['status'] == FAILED:
-        enhanced['main_error'] = {
-            "title": "Не обозначен следующий шаг",
-            "explanation": "Диалог завершился без чёткого плана действий, клиент не знает, что делать дальше."
-        }
+        enhanced['main_error'] = {"title": "Не обозначен следующий шаг", "explanation": "Диалог завершился без чёткого плана действий, клиент не знает, что делать дальше."}
     else:
         enhanced['main_error'] = None
-
     if new_health < 40:
-        enhanced['money_loss'] = {
-            "level": "high",
-            "title": "Высокий риск потери сделки",
-            "reason": "Критические ошибки в диалоге: потребность не выявлена, возражения не обработаны.",
-            "action": "Начните с выявления потребности клиента."
-        }
+        enhanced['money_loss'] = {"level": "high", "title": "Высокий риск потери сделки", "reason": "Критические ошибки в диалоге: потребность не выявлена, возражения не обработаны.", "action": "Начните с выявления потребности клиента."}
     elif new_health < 70:
-        enhanced['money_loss'] = {
-            "level": "medium",
-            "title": "Средний риск потери сделки",
-            "reason": "Есть области для улучшения: работа с возражениями или следующий шаг.",
-            "action": "Уточните причину возражений и обозначьте следующий шаг."
-        }
+        enhanced['money_loss'] = {"level": "medium", "title": "Средний риск потери сделки", "reason": "Есть области для улучшения: работа с возражениями или следующий шаг.", "action": "Уточните причину возражений и обозначьте следующий шаг."}
     else:
-        enhanced['money_loss'] = {
-            "level": "low",
-            "title": "Низкий риск потери сделки",
-            "reason": "Диалог прошёл хорошо, клиент проявил интерес.",
-            "action": "Продолжайте в том же духе."
-        }
-
+        enhanced['money_loss'] = {"level": "low", "title": "Низкий риск потери сделки", "reason": "Диалог прошёл хорошо, клиент проявил интерес.", "action": "Продолжайте в том же духе."}
     lost_reasons = []
     if needs_enhanced['status'] == FAILED:
-        lost_reasons.append({
-            "title": "Не выявлена потребность клиента",
-            "impact": "high",
-            "explanation": "Клиент ушёл без понимания ценности, потому что менеджер не задал уточняющих вопросов."
-        })
+        lost_reasons.append({"title": "Не выявлена потребность клиента", "impact": "high", "explanation": "Клиент ушёл без понимания ценности, потому что менеджер не задал уточняющих вопросов."})
     if objection_enhanced['status'] == FAILED:
-        lost_reasons.append({
-            "title": "Возражение клиента проигнорировано",
-            "impact": "high",
-            "explanation": "Сомнение клиента осталось без ответа, он ушёл с неуверенностью."
-        })
+        lost_reasons.append({"title": "Возражение клиента проигнорировано", "impact": "high", "explanation": "Сомнение клиента осталось без ответа, он ушёл с неуверенностью."})
     if next_step_enhanced['status'] == FAILED:
-        lost_reasons.append({
-            "title": "Нет следующего шага после общения",
-            "impact": "medium",
-            "explanation": "Диалог оборвался, клиент не знает, что делать дальше."
-        })
+        lost_reasons.append({"title": "Нет следующего шага после общения", "impact": "medium", "explanation": "Диалог оборвался, клиент не знает, что делать дальше."})
     if not has_value:
-        lost_reasons.append({
-            "title": "Не показана ценность продукта",
-            "impact": "medium",
-            "explanation": "Клиент не понял выгоду, поэтому сравнивает только цены."
-        })
+        lost_reasons.append({"title": "Не показана ценность продукта", "impact": "medium", "explanation": "Клиент не понял выгоду, поэтому сравнивает только цены."})
     enhanced['lost_deals_reasons'] = lost_reasons[:3]
-
     if enhanced.get('main_error'):
         if enhanced['recommendations']:
             enhanced['next_best_action'] = enhanced['recommendations'][0].get('advice', 'Задайте уточняющий вопрос клиенту.')
@@ -321,6 +238,5 @@ def enhance_analysis(original_result: Dict[str, Any], dialog_text: str) -> Dict[
             enhanced['next_best_action'] = 'Задайте уточняющий вопрос клиенту.'
     else:
         enhanced['next_best_action'] = 'Отлично! Продолжайте в том же духе. Уточните у клиента, какие ещё вопросы у него есть, и подтвердите готовность к сотрудничеству.'
-
     enhanced['seller_level'] = get_seller_level(new_health)
     return enhanced
