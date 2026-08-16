@@ -10,6 +10,54 @@ PARTIAL = "partial"
 FAILED = "failed"
 UNKNOWN = "unknown"
 
+# ===== ВСТРОЕННЫЙ СЛОВАРЬ РЕКОМЕНДАЦИЙ =====
+RECOMMENDATIONS = {
+    "price_objection": {
+        "title": "Не выяснили причину возражения по цене",
+        "advice": "Спросите клиента, что именно его смущает в стоимости: бюджет, сравнение с конкурентами или непонимание ценности.",
+        "example": "«Подскажите, вопрос только в бюджете или есть сомнения по характеристикам?»"
+    },
+    "need_not_identified": {
+        "title": "Не выявлена потребность клиента",
+        "advice": "Перед обсуждением цены или продукта задайте вопросы, чтобы понять реальные задачи клиента.",
+        "example": "«Какую задачу вы хотите решить с помощью нашего продукта?»"
+    },
+    "no_next_step": {
+        "title": "Не обозначен следующий шаг",
+        "advice": "Завершите диалог чётким планом действий: что вы сделаете, что должен сделать клиент.",
+        "example": "«Я подготовлю коммерческое предложение и отправлю вам завтра. Когда вам удобно его обсудить?»"
+    },
+    "value_not_shown": {
+        "title": "Не показана ценность продукта",
+        "advice": "Объясните клиенту, какую выгоду он получит: экономия времени, денег, рост продаж и т.д.",
+        "example": "«Это решение позволит вам экономить 3 часа в неделю, что даст дополнительно 15 000 рублей прибыли в месяц.»"
+    },
+    "objection_ignored": {
+        "title": "Возражение клиента проигнорировано",
+        "advice": "Когда клиент возражает, спросите причину и предложите альтернативу или объяснение.",
+        "example": "«Почему это кажется дорогим? Давайте посмотрим, что можно оптимизировать.»"
+    },
+    "objection_partial": {
+        "title": "Возражение обработано частично",
+        "advice": "Уточните причину возражения, чтобы дать точное решение.",
+        "example": "«Что именно вас смущает: цена, сроки или условия?»"
+    },
+    "closing_missing": {
+        "title": "Нет закрытия сделки",
+        "advice": "Завершите диалог прямым вопросом о готовности к покупке или действию.",
+        "example": "«Устраивает ли вас это предложение? Можем начать оформление?»"
+    }
+}
+
+def get_recommendation(error_key: str) -> dict:
+    return RECOMMENDATIONS.get(error_key, {
+        "title": "Есть зона для улучшения",
+        "advice": "Попробуйте задать больше уточняющих вопросов клиенту.",
+        "example": "«Что для вас сейчас наиболее важно?»"
+    })
+
+# ===== ОСТАЛЬНЫЕ ФУНКЦИИ =====
+
 def status_to_score(status: str) -> int:
     if status == DONE:
         return 100
@@ -204,7 +252,6 @@ def enhance_analysis(original_result: Dict[str, Any], dialog_text: str) -> Dict[
     has_value = any(kw in dialog_text.lower() for kw in value_keywords)
     if not has_value:
         issues.append('value_not_shown')
-    from .recommendations import get_recommendation
     recommendations = [get_recommendation(issue) for issue in issues]
     enhanced['recommendations'] = recommendations[:3]
     if needs_enhanced['status'] == FAILED:
