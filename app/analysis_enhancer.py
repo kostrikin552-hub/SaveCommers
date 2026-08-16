@@ -5,7 +5,6 @@ from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Константы уровней выполнения
 DONE = "done"
 PARTIAL = "partial"
 FAILED = "failed"
@@ -14,23 +13,16 @@ UNKNOWN = "unknown"
 # ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 
 def status_to_score(status: str) -> int:
-    """
-    Преобразует статус выполнения критерия в баллы (0–100).
-    UNKNOWN трактуется как нейтральный (50), чтобы не штрафовать.
-    """
     if status == DONE:
         return 100
     elif status == PARTIAL:
         return 50
     elif status == UNKNOWN:
-        return 50  # не штрафуем, но и не даём максимум
-    else:  # failed
+        return 50
+    else:
         return 0
 
 def get_seller_level(score: int) -> dict:
-    """
-    Возвращает уровень продавца на основе Sales Health Score.
-    """
     if score >= 90:
         return {"level": "expert", "label": "🏆 Экспертный уровень", "description": "Вы показываете выдающиеся результаты. Ваши диалоги близки к идеалу, клиенты доверяют вам."}
     elif score >= 70:
@@ -40,46 +32,63 @@ def get_seller_level(score: int) -> dict:
     else:
         return {"level": "novice", "label": "🥉 Начальный уровень", "description": "Есть фундамент, но нужно усилить ключевые навыки: выявление потребностей и работу с возражениями."}
 
-# ========== ОСНОВНЫЕ ФУНКЦИИ ДЕТЕКЦИИ ==========
+# ========== ФУНКЦИИ ДЕТЕКЦИИ (улучшенные) ==========
 
-def detect_need(dialog_text: str) -> Dict[str, Any]:
-    """
-    Определяет, выявлена ли потребность клиента.
-    Ищем вопросы продавца о потребностях и содержательные ответы клиента.
-    """
+def _parse_roles(dialog_text: str) -> Dict[str, str]:
+    """Парсит диалог на реплики менеджера и клиента по меткам."""
     lines = dialog_text.strip().splitlines()
+    manager_lines = []
+    client_lines = []
     pattern_manager = re.compile(r'^(Вы|Менеджер|Продавец):\s*(.*)', re.I)
     pattern_client = re.compile(r'^(Клиент|Покупатель):\s*(.*)', re.I)
-
-    manager_questions = []
-    client_responses = []
     last_speaker = None
 
     for line in lines:
         m = pattern_manager.match(line)
         if m:
-            text = m.group(2).strip()
+            manager_lines.append(m.group(2).strip())
             last_speaker = 'manager'
-            if '?' in text or re.search(r'(какая|какой|какие|для чего|что|зачем|почему|где|когда|как)', text, re.I):
-                manager_questions.append(text)
             continue
         m = pattern_client.match(line)
         if m:
-            text = m.group(2).strip()
+            client_lines.append(m.group(2).strip())
             last_speaker = 'client'
-            client_responses.append(text)
             continue
-        # Если нет меток, добавляем к последнему
-        if last_speaker == 'manager' and manager_questions:
-            manager_questions[-1] += ' ' + line.strip()
-        elif last_speaker == 'client' and client_responses:
-            client_responses[-1] += ' ' + line.strip()
+        # Если строка без метки, добавляем к предыдущему спикеру
+        if last_speaker == 'manager' and manager_lines:
+            manager_lines[-1] += ' ' + line.strip()
+        elif last_speaker == 'client' and client_lines:
+            client_lines[-1] += ' ' + line.strip()
+        else:
+            # Если не удалось определить, добавляем в клиент
+            client_lines.append(line.strip())
 
-    need_keywords = ['задача', 'цель', 'проблема', 'нужно', 'хотите', 'интересует', 'планируете', 'использовать', 'какой бюджет', 'какие задачи', 'для чего', 'что именно']
-    has_question = any(any(kw in q.lower() for kw in need_keywords) for q in manager_questions)
+    return {
+        'manager': ' '.join(manager_lines),
+        'client': ' '.join(client_lines)
+    }
 
-    client_info_keywords = ['хочу', 'нужно', 'планирую', 'интересует', 'работаю', 'использую', 'бизнес', 'задача', 'бюджет', 'цель', 'хотел бы']
-    has_client_answer = any(any(kw in r.lower() for kw in client_info_keywords) for r in client_responses)
+def detect_need(dialog_text: str) -> Dict[str, Any]:
+    roles = _parse_roles(dialog_text)
+    manager_text = roles.get('manager', '')
+    client_text = roles.get('client', '')
+
+    # Расширенные ключевые слова для вопросов продавца
+    need_keywords = [
+        'задача', 'цель', 'проблема', 'нужно', 'хотите', 'интересует',
+        'планируете', 'использовать', 'какой бюджет', 'какие задачи',
+        'для чего', 'что именно', 'для каких', 'главное', 'важно',
+        'какую задачу', 'какого результата', 'что вы хотите'
+    ]
+    has_question = any(kw in manager_text.lower() for kw in need_keywords)
+
+    # Ключевые слова для ответа клиента
+    client_info_keywords = [
+        'хочу', 'нужно', 'планирую', 'интересует', 'работаю', 'использую',
+        'бизнес', 'задача', 'бюджет', 'цель', 'хотел бы', 'продавать',
+        'запускаться', 'получить', 'достичь'
+    ]
+    has_client_answer = any(kw in client_text.lower() for kw in client_info_keywords)
 
     if has_question and has_client_answer:
         status = DONE
@@ -103,42 +112,28 @@ def detect_need(dialog_text: str) -> Dict[str, Any]:
     }
 
 def detect_next_step(dialog_text: str) -> Dict[str, Any]:
-    """
-    Определяет, обозначен ли следующий шаг и подтверждён ли он клиентом.
-    """
-    lines = dialog_text.strip().splitlines()
-    pattern_manager = re.compile(r'^(Вы|Менеджер|Продавец):\s*(.*)', re.I)
-    pattern_client = re.compile(r'^(Клиент|Покупатель):\s*(.*)', re.I)
+    roles = _parse_roles(dialog_text)
+    manager_text = roles.get('manager', '')
+    client_text = roles.get('client', '')
 
-    manager_texts = []
-    client_texts = []
-    last = None
+    # Ключевые слова для следующего шага
+    next_step_keywords = [
+        'следующий', 'дальше', 'отправлю', 'подготовлю', 'свяжусь',
+        'созвонимся', 'напишу', 'встретимся', 'завтра', 'позже',
+        'подберу', 'оформлю', 'пришлю', 'позвоню', 'напишу',
+        'встреча', 'звонок', 'демо', 'презентация'
+    ]
+    has_next_step = any(kw in manager_text.lower() for kw in next_step_keywords)
 
-    for line in lines:
-        m = pattern_manager.match(line)
-        if m:
-            manager_texts.append(m.group(2).strip())
-            last = 'manager'
-            continue
-        m = pattern_client.match(line)
-        if m:
-            client_texts.append(m.group(2).strip())
-            last = 'client'
-            continue
-        if last == 'manager' and manager_texts:
-            manager_texts[-1] += ' ' + line.strip()
-        elif last == 'client' and client_texts:
-            client_texts[-1] += ' ' + line.strip()
+    # Подтверждение клиента (включая косвенное согласие)
+    confirmation_keywords = [
+        'да', 'хорошо', 'договорились', 'ок', 'отлично', 'согласен',
+        'устраивает', 'подходит', 'давайте', 'конечно', 'жду',
+        'попробуем', 'давай', 'попробую', 'согласна'
+    ]
+    has_confirmation = any(kw in client_text.lower() for kw in confirmation_keywords)
 
-    full_manager = ' '.join(manager_texts)
-    full_client = ' '.join(client_texts)
-
-    next_step_keywords = ['следующий', 'дальше', 'отправлю', 'подготовлю', 'свяжусь', 'созвонимся', 'напишу', 'встретимся', 'завтра', 'позже', 'подберу', 'оформлю', 'пришлю', 'позвоню', 'напишу']
-    has_next_step = any(kw in full_manager.lower() for kw in next_step_keywords)
-
-    confirmation_keywords = ['да', 'хорошо', 'договорились', 'ок', 'отлично', 'согласен', 'устраивает', 'подходит', 'давайте', 'конечно', 'жду']
-    has_confirmation = any(kw in full_client.lower() for kw in confirmation_keywords)
-
+    # Если есть предложение следующего шага и клиент согласился (даже косвенно) -> DONE
     if has_next_step and has_confirmation:
         status = DONE
         reason = "Продавец обозначил следующий шаг, клиент подтвердил."
@@ -152,7 +147,8 @@ def detect_next_step(dialog_text: str) -> Dict[str, Any]:
         reason = "Не обнаружено следующего шага."
         confidence = 0.8
 
-    time_match = re.search(r'(завтра|сегодня|послезавтра|\d{1,2}:\d{2}|\d{1,2} часа|\d{1,2} дней|\d{1,2} минут)', full_manager + ' ' + full_client, re.I)
+    # Попытка извлечь время
+    time_match = re.search(r'(завтра|сегодня|послезавтра|\d{1,2}:\d{2}|\d{1,2} часа|\d{1,2} дней|\d{1,2} минут)', manager_text + ' ' + client_text, re.I)
     time = time_match.group(0) if time_match else None
 
     return {
@@ -165,39 +161,12 @@ def detect_next_step(dialog_text: str) -> Dict[str, Any]:
     }
 
 def detect_objection_handling(dialog_text: str) -> Dict[str, Any]:
-    """
-    Определяет, как обработаны возражения клиента.
-    Уровни: DONE (сильная обработка), PARTIAL (частичная), FAILED (нет обработки).
-    """
-    lines = dialog_text.strip().splitlines()
-    pattern_manager = re.compile(r'^(Вы|Менеджер|Продавец):\s*(.*)', re.I)
-    pattern_client = re.compile(r'^(Клиент|Покупатель):\s*(.*)', re.I)
-
-    manager_texts = []
-    client_texts = []
-    last = None
-
-    for line in lines:
-        m = pattern_manager.match(line)
-        if m:
-            manager_texts.append(m.group(2).strip())
-            last = 'manager'
-            continue
-        m = pattern_client.match(line)
-        if m:
-            client_texts.append(m.group(2).strip())
-            last = 'client'
-            continue
-        if last == 'manager' and manager_texts:
-            manager_texts[-1] += ' ' + line.strip()
-        elif last == 'client' and client_texts:
-            client_texts[-1] += ' ' + line.strip()
-
-    full_client = ' '.join(client_texts)
-    full_manager = ' '.join(manager_texts)
+    roles = _parse_roles(dialog_text)
+    client_text = roles.get('client', '')
+    manager_text = roles.get('manager', '')
 
     objection_keywords = ['дорого', 'подумаю', 'не сейчас', 'сомневаюсь', 'не уверен', 'альтернатива', 'конкурент', 'цена высокая', 'дешевле', 'сравниваю']
-    has_objection = any(kw in full_client.lower() for kw in objection_keywords)
+    has_objection = any(kw in client_text.lower() for kw in objection_keywords)
 
     if not has_objection:
         return {
@@ -208,10 +177,10 @@ def detect_objection_handling(dialog_text: str) -> Dict[str, Any]:
         }
 
     strong_patterns = [r'почему', r'что именно', r'по сравнению с чем', r'давайте разберём', r'расскажите', r'в чём причина', r'что смущает']
-    has_strong = any(re.search(p, full_manager, re.I) for p in strong_patterns)
+    has_strong = any(re.search(p, manager_text, re.I) for p in strong_patterns)
 
     partial_patterns = [r'можем подобрать', r'есть вариант', r'другой продукт', r'скидка', r'дешевле', r'попробуем', r'альтернатива']
-    has_partial = any(re.search(p, full_manager, re.I) for p in partial_patterns)
+    has_partial = any(re.search(p, manager_text, re.I) for p in partial_patterns)
 
     if has_strong:
         status = DONE
@@ -236,10 +205,6 @@ def detect_objection_handling(dialog_text: str) -> Dict[str, Any]:
     }
 
 def calculate_sales_health(enhanced: Dict[str, Any], dialog_text: str) -> int:
-    """
-    Пересчитывает Sales Health Score по новой формуле.
-    Компоненты: квалификация, потребность, ценность, возражения, следующий шаг.
-    """
     needs_status = enhanced.get('needs_enhanced', {}).get('status', 'failed')
     next_status = enhanced.get('next_step_enhanced', {}).get('status', 'failed')
     objection_status = enhanced.get('objection_enhanced', {}).get('status', 'failed')
@@ -267,7 +232,6 @@ def calculate_sales_health(enhanced: Dict[str, Any], dialog_text: str) -> int:
     next_score = status_to_score(next_status)
     objection_score = status_to_score(objection_status)
 
-    # Ценность: проверяем наличие аргументации ценности
     value_keywords = ['выгода', 'результат', 'экономия', 'увеличит', 'повысит', 'упростит', 'польза', 'поможет', 'сэкономите', 'получите', 'окупится']
     has_value = any(kw in dialog_text.lower() for kw in value_keywords)
     value_score = 100 if has_value else 0
@@ -282,31 +246,23 @@ def calculate_sales_health(enhanced: Dict[str, Any], dialog_text: str) -> int:
     return int(round(total))
 
 def enhance_analysis(original_result: Dict[str, Any], dialog_text: str) -> Dict[str, Any]:
-    """
-    Улучшает результат анализа, добавляя новые поля и пересчитывая некоторые значения.
-    Сохраняет все старые поля для обратной совместимости.
-    """
     enhanced = original_result.copy()
 
-    # 1. Улучшаем выявление потребности (needs)
     needs_enhanced = detect_need(dialog_text)
     enhanced['needs_enhanced'] = needs_enhanced
 
-    # 2. Улучшаем следующий шаг (next_step)
     next_step_enhanced = detect_next_step(dialog_text)
     enhanced['next_step_enhanced'] = next_step_enhanced
 
-    # 3. Улучшаем обработку возражений
     objection_enhanced = detect_objection_handling(dialog_text)
     enhanced['objection_enhanced'] = objection_enhanced
 
-    # 4. Пересчитываем Sales Health Score
     new_health = calculate_sales_health(enhanced, dialog_text)
-    enhanced['sales_health_score'] = new_health  # заменяем старый на новый
+    enhanced['sales_health_score'] = new_health
     if 'sales_health_score' in original_result:
         enhanced['sales_health_score_old'] = original_result['sales_health_score']
 
-    # 5. Добавляем рекомендации на основе обнаруженных проблем
+    # Рекомендации на основе обнаруженных проблем
     issues = []
     if needs_enhanced['status'] != DONE:
         issues.append('need_not_identified')
@@ -316,7 +272,7 @@ def enhance_analysis(original_result: Dict[str, Any], dialog_text: str) -> Dict[
         issues.append('objection_ignored')
     elif objection_enhanced['status'] == PARTIAL:
         issues.append('objection_partial')
-    # Добавляем проверку на ценность
+    # Ценность
     value_keywords = ['выгода', 'результат', 'экономия', 'увеличит', 'повысит', 'упростит', 'польза', 'поможет', 'сэкономите', 'получите']
     has_value = any(kw in dialog_text.lower() for kw in value_keywords)
     if not has_value:
@@ -324,15 +280,9 @@ def enhance_analysis(original_result: Dict[str, Any], dialog_text: str) -> Dict[
 
     from .recommendations import get_recommendation
     recommendations = [get_recommendation(issue) for issue in issues]
-
-    # Ограничим до 3 рекомендаций
     enhanced['recommendations'] = recommendations[:3]
 
-    # 6. Переопределяем уровень продавца на основе нового health
-    enhanced['seller_level'] = get_seller_level(new_health)
-
-    # ====== 7. СИНХРОНИЗАЦИЯ СО СТАРЫМИ ПОЛЯМИ ======
-    # Переопределяем main_error на основе новых статусов (приоритет: потребность > возражения > следующий шаг)
+    # Переопределяем main_error и money_loss на основе новых статусов
     if needs_enhanced['status'] == FAILED:
         enhanced['main_error'] = {
             "title": "Не выявлена потребность клиента",
@@ -349,10 +299,8 @@ def enhance_analysis(original_result: Dict[str, Any], dialog_text: str) -> Dict[
             "explanation": "Диалог завершился без чёткого плана действий, клиент не знает, что делать дальше."
         }
     else:
-        # Если всё хорошо, убираем ошибку
         enhanced['main_error'] = None
 
-    # Переопределяем money_loss на основе нового sales_health_score
     if new_health < 40:
         enhanced['money_loss'] = {
             "level": "high",
@@ -375,7 +323,6 @@ def enhance_analysis(original_result: Dict[str, Any], dialog_text: str) -> Dict[
             "action": "Продолжайте в том же духе."
         }
 
-    # Переопределяем lost_deals_reasons (первые 3 причины на основе статусов)
     lost_reasons = []
     if needs_enhanced['status'] == FAILED:
         lost_reasons.append({
@@ -401,17 +348,16 @@ def enhance_analysis(original_result: Dict[str, Any], dialog_text: str) -> Dict[
             "impact": "medium",
             "explanation": "Клиент не понял выгоду, поэтому сравнивает только цены."
         })
-    # Ограничим до 3
     enhanced['lost_deals_reasons'] = lost_reasons[:3]
 
-    # Переопределяем next_best_action (если есть main_error, то его действие)
     if enhanced.get('main_error'):
-        # Берём рекомендацию из списка, если есть
         if enhanced['recommendations']:
             enhanced['next_best_action'] = enhanced['recommendations'][0].get('advice', 'Задайте уточняющий вопрос клиенту.')
         else:
             enhanced['next_best_action'] = 'Задайте уточняющий вопрос клиенту.'
     else:
         enhanced['next_best_action'] = 'Отлично! Продолжайте в том же духе. Уточните у клиента, какие ещё вопросы у него есть, и подтвердите готовность к сотрудничеству.'
+
+    enhanced['seller_level'] = get_seller_level(new_health)
 
     return enhanced
