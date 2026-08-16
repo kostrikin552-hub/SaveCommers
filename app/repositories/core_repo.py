@@ -25,6 +25,7 @@ def get_user_by_username(username: str) -> Optional[Dict]:
 # ==================== SUBSCRIPTIONS ====================
 
 def get_active_subscription(user_id: int) -> Optional[Dict[str, Any]]:
+    """Возвращает одну активную подписку (is_active=TRUE и end_date > NOW) с наивысшим приоритетом, если несколько — самую позднюю."""
     return execute_query(
         """SELECT * FROM subscriptions
         WHERE user_id = %s AND is_active = TRUE AND end_date > NOW()
@@ -67,6 +68,7 @@ def extend_subscription(user_id: int, plan_type: str, days: int) -> None:
                 )
 
 def deactivate_all_subscriptions(user_id: int) -> None:
+    """Деактивирует все активные подписки пользователя."""
     execute_query("UPDATE subscriptions SET is_active = FALSE WHERE user_id = %s AND is_active = TRUE", (user_id,))
 
 def get_subscription_history(user_id: int, limit: int = 10) -> list:
